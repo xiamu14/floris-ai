@@ -8,18 +8,37 @@ Lesson 1 要实现一个能跑通的 TypeScript agent runtime MVP。它不追求
 - 构建最小 context。
 - 调用 `ModelProvider`。
 - 处理模型流式事件。
-- 执行一个 mock tool。
+- 执行 `echo_tool`。
 - 把 tool result 放回下一轮模型请求。
 - 在明确条件下停止。
 - 记录可回放的 agent events。
 
-完成这一课后，开发者应该能独立解释并实现一个最小 code agent loop，理解为什么 agent loop 不是普通 chat completion，而是一个带 tools、hooks、context、event log 的状态机。
+当前代码 tag 覆盖 Lesson 1.1 到 Lesson 1.3 的学习目标：runtime skeleton、ModelProvider / provider boundary、ToolRegistry / first tool。它还额外提供了一个最小 agent-loop debug demo，用来观察真实 AI API 的 user message、provider call、tool call、tool result 回填、token usage 和 stop reason。
+
+这个 tag 不代表 Lesson 1.4 之后的能力已经完成。session、context window、hooks、permission、memory 等基础能力会在后续 tag 继续增强。
+
+当前学习 tag：
+
+```text
+lesson1-agent-loop-basic-debug
+```
+
+学习覆盖：
+
+| 小节 | 对应 tag | 学习结论 |
+| --- | --- | --- |
+| Lesson 1.1 Runtime skeleton | `lesson1-agent-loop-basic-debug` | package、目录、类型管理、测试工具链已经足够支撑后续实现。 |
+| Lesson 1.2 ModelProvider boundary | `lesson1-agent-loop-basic-debug` | provider contract、OpenAI-compatible provider、MIMO config、role resolver 已形成最小边界。 |
+| Lesson 1.3 ToolRegistry | `lesson1-agent-loop-basic-debug` | `echo_tool` 和 registry 已经足够解释 tool call 到 tool result 的回填路径。 |
+| Lesson 1.4+ | 后续 tag | HookRunner、context window、session persistence、permission、memory 继续补。 |
+
+完成整课后，开发者应该能独立解释并实现一个最小 code agent loop，理解为什么 agent loop 不是普通 chat completion，而是一个带 tools、hooks、context、event log 的状态机。
 
 ## 非目标
 
 Lesson 1 不做这些深水区：
 
-- 不接真实 OpenAI、Anthropic 或其他 provider SDK。
+- 不实现完整多 provider 体系；当前只接入 OpenAI-compatible 的最小 adapter，用于 MIMO 这类兼容平台验证调用边界。
 - 不实现完整权限审核 agent。
 - 不实现真实 SQLite / SwiftData persistence。
 - 不实现 JSONL persistence，只做 in-memory session store。
@@ -29,6 +48,15 @@ Lesson 1 不做这些深水区：
 - 不实现真实 compaction。
 - 不实现用户脚本 hooks。
 - 不实现长期 memory 检索。
+
+当前 tag 的非目标还包括：
+
+- 不算完成 context window 或 Context Inspector。
+- 不算完成 session persistence 或 branch tree。
+- 不算完成 HookRunner。
+- 不算完成 PermissionGate。
+- 不算完成 MemoryStore。
+- 不算完成 file / shell / git tools。
 
 这些能力会在后续 lesson 中逐步补齐。Lesson 1 只保留接口和最小 stub，避免第一步过大。
 
@@ -125,7 +153,7 @@ Lesson 1 是 Fate AI 从 0 到 1 的第一块地基。它要故意小，但不�
 
 - `AgentProfile`：为 multi-agent 留入口。
 - `ModelProvider`：为多 provider 留入口。
-- `ProviderTransport`：为真实请求、mock、retry、日志和录制留入口。
+- `OpenAICompatibleModelProvider`：为真实 OpenAI-compatible 请求、日志和 token usage 观察留入口。
 - `ToolRegistry`：为不同 agent 的 tool scope 留入口。
 - `HookRunner`：为权限、安全、context 注入、stop 检查留入口。
 - `ContextBuilder`：为 Context Inspector 留入口。
@@ -196,7 +224,7 @@ Anthropic Messages API 有明确的 `stop_reason`，例如 `tool_use`、`end_tur
 
 - `Lesson 1.1`：Runtime skeleton, package layout, and baseline tooling。
 - `Lesson 1.2`：ModelProvider, prompt contracts, and provider transport boundary。
-- `Lesson 1.3`：ToolRegistry and first mock tool。
+- `Lesson 1.3`：ToolRegistry and first tool。
 - `Lesson 1.4`：HookRunner MVP。
 - `Lesson 1.5`：Context, prompt, memory, session, and permission stubs。
 - `Lesson 1.6`：AgentLoop MVP state machine and stop reasons。
@@ -223,8 +251,9 @@ packages/agent-runtime/
       loop-stop-reason.ts
     providers/
       model-provider.ts
-      provider-transport.ts
-      model-provider-proxy.ts
+      openai-compatible-provider.ts
+      openai-compatible-provider-factory.ts
+      provider-resolver.ts
     tools/
       tool.ts
       tool-registry.ts
@@ -256,7 +285,6 @@ packages/agent-runtime/
     index.ts
   tests/
     agent-loop.test.ts
-    provider-transport.test.ts
 ```
 
 类型管理规则：
@@ -279,8 +307,8 @@ packages/agent-runtime/
 目标：
 
 - 抽象出 provider，避免 agent loop 绑定某个 SDK。
-- 实现 provider transport 拦截层，让测试不依赖真实 API，同时不引入一套平行 provider。
-- 在 `provider.type.ts` 补齐本小节需要的 `ModelProvider`、`ModelRequest`、`ModelEvent`、`ProviderTransport` 类型。
+- 实现 OpenAI-compatible provider adapter，让 demo 直接观察真实 AI API 的 token usage。
+- 在 `provider.type.ts` 补齐本小节需要的 `ModelProvider`、`ModelRequest`、`ModelEvent` 类型。
 - 在 `prompt.type.ts` 补齐 `PromptTemplate`、`SystemPromptRef`、`PromptStore` 类型。
 - 在 `agent.type.ts` 明确 `AgentProfile.systemPrompt` 和 `AgentRoleDefinition.systemPrompt`，不要继续用 `instructions: string[]` 混放 role prompt。
 - 基于 Amp Code system prompt 建立 Fate AI 默认 prompt。能直接对应 Fate AI 的内容直接使用；Amp 专属品牌、工具名、tool schema、Amp 官网说明等不对应内容改写成 Fate AI runtime 语义。
@@ -288,17 +316,17 @@ packages/agent-runtime/
 
 设计模式选择：
 
-- `ModelProvider` 使用 Strategy。`AgentLoop` 只依赖这个接口，不关心 Anthropic、OpenAI、本地模型或 mock。
+- `ModelProvider` 使用 Strategy。`AgentLoop` 只依赖这个接口，不关心 Anthropic、OpenAI 或本地模型。
 - 真实 provider 接入时使用 Adapter。不同 SDK 的 request、response、stop reason、tool call shape 都转成 Fate AI 内部 `ModelRequest` / `ModelEvent`。
-- `ProviderTransport` 使用 Proxy / Decorator 思路。真实网络请求、mock、日志、retry、rate limit、record / replay 都在这个请求发送边界扩展。
+- DEBUG 日志使用 Decorator 思路包装 `ModelProvider`。真实网络请求、日志、token usage 统计都围绕 provider boundary 观察。
 - `ModelEvent` stream 使用 `AsyncIterable`。Provider 可以流式输出文本、tool call、usage 和 done event。
 - 模型返回的 tool call 按 Command 思路处理：provider 只产出 `{ id, name, input }`，执行交给 `ToolRegistry`。
 
 暂时不采用：
 
 - 不使用继承式 `BaseProvider`。Provider 差异用 adapter 和 plain object contract 表达，避免后续真实 provider 被父类模板限制。
-- 不使用 Abstract Factory。Lesson 1 只有一个 provider wrapper 和一个 mock transport，还不需要 provider registry。
-- 不让 `MockProviderTransport` 成为可配置 provider。它只是测试和 demo 使用的 transport 替身。
+- 不使用 Abstract Factory。Lesson 1 只有一个 OpenAI-compatible provider factory，还不需要 provider registry。
+- 不提供替代真实模型调用的 demo 路径。学习本项目时要求使用真实 AI API 平台，因为 token usage 是核心观察目标。
 
 建议接口：
 
@@ -312,22 +340,13 @@ interface ModelProvider {
 }
 ```
 
-请求发送边界使用 transport：
-
-```ts
-interface ProviderTransport {
-  send(request: ProviderTransportRequest, signal: AbortSignal): AsyncIterable<ModelEvent>;
-}
-```
-
-真实 provider adapter 和测试脚本都走同一条 path：
+真实 provider adapter 走这条 path：
 
 ```text
 AgentLoop
   -> ModelProvider
-      -> TransportBackedModelProvider
-          -> ProviderTransport
-              -> MockProviderTransport
+      -> OpenAICompatibleModelProvider
+          -> OpenAI SDK compatible client
 ```
 
 `AgentRole` 到 provider 的解析不能写进 agent loop。推荐在 provider 创建前做一层 resolver：
@@ -349,7 +368,7 @@ export default defineAgentConfig({
     openai: {
       kind: "openai",
       apiUrl: "https://api.openai.com/v1",
-      apiKeyEnv: "OPENAI_API_KEY",
+      apiKeyEnvName: "OPENAI_API_KEY",
     },
   },
   prompts: {
@@ -383,9 +402,7 @@ export default defineAgentConfig({
 - 未配置的 role fallback 到 `defaultRole`。
 - role 的主 model 缺失或 provider 不可用时，按 `fallbackModelRefs` 依次尝试。
 - 所有 fallback 都要记录原因和最终选择的 provider/model，方便 UI 和 event log 展示。
-- 所有真实 provider 都不可用时，返回 typed configuration error。产品运行时不能自动切到 mock。
-
-Lesson 1 使用 `MockProviderTransport` 拦截请求并返回 scripted response。它不是独立 provider，也不应该被 agent profile 选择。agent loop 只知道 `ModelProvider`，不知道 mock 存在。真实 provider 接入后，这个测试 transport 仍然只用于 test 和 demo，不进入产品配置。
+- 所有真实 provider 都不可用时，返回 typed configuration error。产品运行时不能自动切到替代 provider。
 
 Lesson 1 的 `ModelEvent`：
 
@@ -395,7 +412,7 @@ Lesson 1 的 `ModelEvent`：
 - `done`
 - `error`
 
-Lesson 1 的 `MockProviderTransport` 直接输出完整 `tool_call_done` event，不实现 `tool_call_delta` 拼接。真实 provider 接入时，再在 provider adapter 内部把 streaming tool input delta 组装成统一的 `tool_call_done` event，agent loop 不直接处理 provider 原始 delta。
+OpenAI-compatible provider 当前使用非 streaming Chat Completions。后续如果接入 streaming，再在 provider adapter 内部把 streaming tool input delta 组装成统一的 `tool_call_done` event，agent loop 不直接处理 provider 原始 delta。
 
 Provider 不负责：
 
@@ -424,20 +441,18 @@ Prompt 管理最小规则：
 
 API key 存储：
 
-- Lesson 1 不需要真实 API key。
-- 后续真实 provider 第一版使用平台无关的本地加密配置。
+- 当前 OpenAI-compatible / MIMO path 使用 env 读取 API key，用于验证 provider 调用边界和 token usage。
+- 后续产品形态应使用平台无关的本地加密配置。
 - runtime 不直接依赖 macOS Keychain。
 - 将来可以做 `SecretStore` adapter，让 macOS 用 Keychain，其他平台用别的 backend。
 
 测试要求：
 
-- `MockProviderTransport` 可以按脚本稳定输出事件。
 - `AgentProfile` fixture 必须显式引用 system prompt。
 - 默认 agent role prompts 覆盖 `coder`、`oracle`、`reviewer`、`explorer`。
 - 默认 prompt 内容必须包含 Amp 映射后的 shared sections，并保持 role-specific boundaries。
 - 支持用户中断：`AbortSignal` abort 后停止输出。
 - 可以模拟 provider error。
-- mock transport 必须通过正式 `ModelProvider` path 驱动，不建立平行测试入口。
 - `coder` role 能解析到配置里的 provider 和 model。
 - 未配置 role 时 fallback 到 `defaultRole`。
 - model 或 provider 缺失时返回可展示的配置错误，不让 agent loop crash。
@@ -594,7 +609,7 @@ Lesson 1 停止条件：
 
 - 没有 tool call 不代表任务质量一定好，只代表模型说本轮结束。
 - `Stop` hook 可以检查“是否应该真的停”。
-- MVP 先让 `Stop` hook 有能力阻止停止，但不实现复杂检查逻辑。
+- 完整 MVP 应让 `Stop` hook 有能力阻止停止，但当前 tag 还没有接入 HookRunner。
 - 必须有 `max_iterations`，防止模型不断请求 tool。
 
 测试要求：
@@ -609,6 +624,7 @@ Lesson 1 停止条件：
 目标：
 
 - 提供一个 CLI demo，证明 runtime 能跑。
+- 当前 tag 重点提供 DEBUG 日志，观察最小 agent loop 的调用过程和单次 provider call token usage。
 - 写出教学笔记和实现拆解。
 - 总结哪些地方是 MVP 简化版。
 
@@ -666,7 +682,7 @@ Lesson 1 完成时必须有：
 ## Lesson 1 验收标准
 
 - `packages/agent-runtime` 可以在命令行跑 demo。
-- mock transport 可以通过正式 `ModelProvider` path 驱动一次 tool call。
+- `bun run demo` 可以通过真实 OpenAI-compatible provider 输出 token usage。
 - agent loop 有明确 stop reason。
 - hook runner 至少覆盖 context、tool、stop、interrupt。
 - context builder 能读取 `AGENTS.md`。

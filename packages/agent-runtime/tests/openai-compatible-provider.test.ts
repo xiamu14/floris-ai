@@ -46,6 +46,7 @@ describe("OpenAI-compatible provider", () => {
         providerConfig: {
           kind: "openai",
           apiUrl: "https://api.compatible.example/v1",
+          apiKeyEnvName: "COMPATIBLE_API_KEY",
         },
         modelConfig: {
           providerId: "compatible",
@@ -61,7 +62,7 @@ describe("OpenAI-compatible provider", () => {
         },
       },
       {
-        client: createMockClient(calls, {
+        client: createTestClient(calls, {
           choices: [
             {
               index: 0,
@@ -148,6 +149,7 @@ describe("OpenAI-compatible provider", () => {
         providerConfig: {
           kind: "openai",
           apiUrl: "https://api.compatible.example/v1",
+          apiKeyEnvName: "COMPATIBLE_API_KEY",
         },
         modelConfig: {
           providerId: "compatible",
@@ -155,7 +157,7 @@ describe("OpenAI-compatible provider", () => {
         },
       },
       {
-        client: createMockClient([], {
+        client: createTestClient([], {
           choices: [
             {
               index: 0,
@@ -209,6 +211,7 @@ describe("OpenAI-compatible provider", () => {
         providerConfig: {
           kind: "openai",
           apiUrl: "https://api.compatible.example/v1",
+          apiKeyEnvName: "COMPATIBLE_API_KEY",
         },
         modelConfig: {
           providerId: "compatible",
@@ -230,6 +233,7 @@ describe("OpenAI-compatible provider", () => {
         providerConfig: {
           kind: "openai",
           apiUrl: "https://api.compatible.example/v1",
+          apiKeyEnvName: "COMPATIBLE_API_KEY",
         },
         modelConfig: {
           providerId: "compatible",
@@ -237,7 +241,7 @@ describe("OpenAI-compatible provider", () => {
         },
       },
       {
-        client: createMockClient([], {
+        client: createTestClient([], {
           choices: [
             {
               index: 0,
@@ -273,6 +277,7 @@ describe("OpenAI-compatible provider", () => {
         providerConfig: {
           kind: "openai",
           apiUrl: "https://api.compatible.example/v1",
+          apiKeyEnvName: "COMPATIBLE_API_KEY",
         },
         modelConfig: {
           providerId: "compatible",
@@ -280,7 +285,7 @@ describe("OpenAI-compatible provider", () => {
         },
       },
       {
-        client: createMockClient([], {
+        client: createTestClient([], {
           choices: [
             {
               index: 0,
@@ -328,7 +333,7 @@ async function collect(
   return collected;
 }
 
-function createMockClient(
+function createTestClient(
   calls: unknown[],
   completion: unknown
 ): OpenAIChatCompletionsClient {

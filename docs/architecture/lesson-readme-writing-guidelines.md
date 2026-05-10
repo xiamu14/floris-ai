@@ -101,7 +101,7 @@ Lesson README 要写出相关技术从早期方案到当前方案的演进。不
 常见 trade-off：
 
 - 简单 demo vs 可持续架构。
-- 真实 provider vs mock transport。
+- 真实 provider vs 本地测试替身。
 - 大型 class vs 函数式状态机。
 - 一次性字符串 prompt vs context sections。
 - 内部 typed hooks vs 用户脚本 hooks。

@@ -17,19 +17,20 @@ import { toOpenAIChatCompletionRequest } from "./utils/openai-request-mapper";
 
 export class OpenAICompatibleModelProvider implements ModelProvider {
   readonly id: string;
-  private readonly apiKey: string;
-  private readonly client: OpenAIChatCompletionsClient | undefined;
+  private readonly apiKey: string | undefined;
+  private readonly injectedClient: OpenAIChatCompletionsClient | undefined;
+  private cachedClient: OpenAIChatCompletionsClient | undefined;
   private readonly modelId: string;
   private readonly modelParameters: ModelParameters | undefined;
   private readonly providerApiUrl: string;
 
   constructor(
     input: ProviderFactoryInput,
-    options: OpenAICompatibleProviderOptions = {apiKey:''}
+    options: OpenAICompatibleProviderOptions = {}
   ) {
     this.id = input.providerId;
     this.apiKey = options.apiKey;
-    this.client = options.client;
+    this.injectedClient = options.client;
     this.modelId = input.modelConfig.modelId;
     this.modelParameters = input.modelConfig.parameters;
     this.providerApiUrl = input.providerConfig.apiUrl;
@@ -58,17 +59,26 @@ export class OpenAICompatibleModelProvider implements ModelProvider {
   }
 
   private resolveClient(): OpenAIChatCompletionsClient {
-    if (this.client) {
-      return this.client;
+    if (this.injectedClient) {
+      return this.injectedClient;
     }
 
-    console.log('[resolveClient]why?', )
+    if (this.cachedClient) {
+      return this.cachedClient;
+    }
 
-    return createOpenAIClient({
-      apiUrl: this.providerApiUrl,
-      apiKey: this.apiKey,
-    });
+    this.cachedClient = createOpenAIClient(
+      this.apiKey
+        ? {
+            apiUrl: this.providerApiUrl,
+            apiKey: this.apiKey,
+          }
+        : {
+            apiUrl: this.providerApiUrl,
+          }
+    );
 
+    return this.cachedClient;
   }
 }
 

@@ -1,386 +1,299 @@
 # Lesson 1 教学笔记
 
-## 使用方式
+## 当前实现边界
 
-这个文件在 Lesson 1 实现过程中同步更新。它不是最终总结，而是每个小节的教学材料。目标是让用户在不看对话记录的情况下，也能按这里的解释独立实现 MVP agent loop。
+当前代码 tag 覆盖 Lesson 1.1 到 Lesson 1.3 的学习目标，并额外提供 **agent-loop 最基本调用 + debug 可观测** demo。
 
-每个小节完成时，都要补齐：
+这个里程碑证明：
 
-- 本小节目标。
-- 本小节新增文件。
-- 核心类型和函数。
-- 数据流。
-- 为什么这样设计。
-- 替代方案。
-- 测试说明。
-- 常见错误。
-
-小节索引：
-
-- `Lesson 1.1`：Runtime skeleton, package layout, and baseline tooling。
-- `Lesson 1.2`：ModelProvider, prompt contracts, and provider transport boundary。
-- `Lesson 1.3`：ToolRegistry and first mock tool。
-- `Lesson 1.4`：HookRunner MVP。
-- `Lesson 1.5`：Context, prompt, memory, session, and permission stubs。
-- `Lesson 1.6`：AgentLoop MVP state machine and stop reasons。
-- `Lesson 1.7`：CLI demo, verification, teaching notes, and implementation breakdown。
-
-## Lesson 1.1 Runtime 目录结构和基础工具链
-
-状态：in progress
-
-### 目标
-
-建立 Lesson 1 的 TypeScript runtime 工作区，让后续 agent loop、provider、tool、hook、context、memory、session、permission 都有稳定文件位置。
-
-### 新增文件
-
-本轮新增：
-
-- `.gitignore`
-- `.zed/settings.json`
-- `apps/mac-desktop/README.md`
-- `apps/mac-desktop/FateAI/**`
-- `apps/mac-desktop/FateAITests/**`
-- `packages/agent-runtime/package.json`
-- `packages/agent-runtime/bun.lock`
-- `packages/agent-runtime/biome.jsonc`
-- `packages/agent-runtime/tsconfig.json`
-- `packages/agent-runtime/vitest.config.ts`
-- `packages/agent-runtime/src/**`
-- `packages/agent-runtime/src/types/*.type.ts`
-- `packages/agent-runtime/src/prompts/**`
-- `packages/agent-runtime/tests/**`
-- `docs/architecture/tooling.md`
-
-### 核心类型和函数
-
-本轮只初始化目录和空源码文件，还没有实现完整核心类型。所有类型后续都放在 `packages/agent-runtime/src/types/*.type.ts`，但不会在 1.1 一次写完。每个功能小节先补自己的 contract 类型，再写对应实现。Prompt runtime 预留 `src/prompts`，因为 agent role 的 system prompt 是 MVP agent profile 的一部分。测试文件加入最小 smoke suite，避免 Vitest 因空 test file 失败。
-
-### 数据流
-
-当前还没有 runtime 数据流。目录已经按未来数据流预留：
+- Lesson 1.1：runtime package、目录、类型管理、测试工具链已经足够支撑后续开发。
+- Lesson 1.2：`ModelProvider`、OpenAI-compatible provider、MIMO config、role resolver 的边界已经能讲清楚。
+- Lesson 1.3：`ToolRegistry` 和 `echo_tool` 已经能解释 tool call 到 tool result 的回填路径。
+- Debug demo：可以看到最小 agent loop 如何闭环。
 
 ```text
-core
-  -> context
-  -> providers
-  -> tools
-  -> hooks
-  -> permissions
-  -> session
+user message
+  -> AgentLoop
+  -> provider call
+  -> optional tool call
+  -> tool result 回填
+  -> second provider call
+  -> stop reason
+  -> DEBUG 日志观察全过程
 ```
 
-### 设计说明
+Lesson 1.4 之后还没有真正完成。context/session 当前只是为了支撑 demo 的最小 stub，不能算 context window 或 session persistence。
 
-包管理工具使用 Bun。lint / format 使用 Ultracite + Biome，原因记录在 `docs/architecture/tooling.md`。
+当前已经跑通：
 
-源码文件先保持空占位，避免在目录初始化阶段提前写业务实现。测试文件不是空文件，因为 Vitest 会把空 test file 视为失败 suite。
+- runtime package、类型目录、测试工具链。
+- `ModelProvider` 抽象、OpenAI-compatible provider。
+- MIMO config 选项、env API key 读取、role 到 provider / model 的 resolver。
+- `echo_tool` 和 `InMemoryToolRegistry`。
+- `BasicContextBuilder`，只构建最小 system prompt、messages 和 token estimate；这不是 context window。
+- `InMemorySessionStore`，只记录本轮 agent events；这不是 session persistence。
+- `AgentLoop.runTurn()`，支持 provider call、tool call、tool result 回填、停止条件和 event log。
+- `run-demo.ts` 通过 MIMO 跑完整 chat agent loop，并用 DEBUG 日志观察 provider request / event / 单次 token usage。
 
-### 替代方案
+还没有真正实现：
 
-没有选择 npm，因为项目约定改为 Bun。没有选择 Oxlint + Oxfmt 作为默认工具链，因为第一阶段更看重 Ultracite + Biome 与 Zed 的直接集成和配置稳定性。
+- Context Window / Context Inspector。
+- session persistence、JSONL / SQLite、branch tree 恢复。
+- HookRunner 的真实事件调度。
+- PermissionGate 和 PolicyReviewer。
+- MemoryStore、memory selection、compaction。
+- file tools、shell tools、git tools。
+- SwiftUI bridge 和 UI 展示。
 
-### 测试说明
+学习者应该把当前 tag 当成 Lesson 1.1 到 Lesson 1.3 的学习完成点：先理解 runtime skeleton、provider boundary、tool registry，再通过 DEBUG 日志观察最小 agent loop。后续再继续补 HookRunner、session、context window、permission、memory。
 
-已运行：
+当前学习 tag：
 
-```bash
-bun run typecheck
-bun run test
-bun run check
+```text
+lesson1-agent-loop-basic-debug
 ```
 
-结果均通过。
+这个 tag 表示 Lesson 1.1 到 Lesson 1.3 的学习内容已经足够，外加 basic agent-loop debug demo。它不是 Lesson 1 全部完成。
 
-### 常见错误
+## 小节状态
 
-- 空 test file 会导致 Vitest 报 `No test suite found`。
-- Ultracite 需要 package 目录内有 ignore 文件，否则 Biome 可能报找不到 ignore file。
-- `packages/agent-runtime/biome.jsonc` 继承 Ultracite 时应使用 `ultracite/core`。
+| 小节 | 当前状态 | 说明 |
+| --- | --- | --- |
+| 1.1 Runtime skeleton | learning complete in `lesson1-agent-loop-basic-debug` | package、目录、TS、test、lint 已可用。 |
+| 1.2 ModelProvider / provider boundary | learning complete in `lesson1-agent-loop-basic-debug` | provider contract、OpenAI-compatible provider、MIMO config、resolver 已可用，足够学习 provider boundary。 |
+| 1.3 ToolRegistry | learning complete in `lesson1-agent-loop-basic-debug` | `echo_tool` 和 registry 足够学习 tool call 回填路径。 |
+| 1.4 HookRunner | not implemented | 只有占位，没有真实 hook pipeline。 |
+| 1.5 Context / memory / session / permission | not implemented as capability | context/session 只是最小 stub；context window、memory、permission 没有实现。 |
+| 1.6 AgentLoop | partial in `lesson1-agent-loop-basic-debug` | basic call path 已存在，用于支撑 demo；完整状态机后续继续补。 |
+| 1.7 CLI demo | partial in `lesson1-agent-loop-basic-debug` | debug demo 可运行；完整 lesson 收尾文档和更完整验证后续继续补。 |
 
-## Lesson 1.2 ModelProvider 和 Prompt 最小接口
+后续每次修改 Lesson 1，都要在本表或 plan 文档里写清楚新增能力对应哪个 tag。
 
-状态：not started
+## Lesson 1.1 Runtime skeleton
 
 ### 目标
 
-这一小节同时建立 provider 边界和 prompt 边界。原因是 multi-agent 的三个核心输入是 system prompt、model、tools；如果只做 provider，不做 prompt，`AgentProfile` 会缺最关键的 role contract。
+建立 `packages/agent-runtime`，让后续 runtime 代码和测试都在稳定目录内演进。
 
-本小节要做到：
+### 关键文件
 
-- `AgentProfile` 明确引用 `systemPrompt`。
-- `PromptTemplate`、`SystemPromptRef`、`PromptStore` 进入 `prompt.type.ts`。
-- 默认 `coder`、`oracle`、`reviewer`、`explorer` prompt 放进 `src/prompts/default-agent-role-prompts.ts`。
-- 默认 prompt 基于 Amp Code system prompt 映射：能对应 Fate AI 的直接使用，不能对应的改写成 Fate AI runtime 语义。
-- `ModelProvider` 和 `ProviderTransport` 保持独立，不负责 prompt 管理。
+- `packages/agent-runtime/package.json`
+- `packages/agent-runtime/tsconfig.json`
+- `packages/agent-runtime/vitest.config.ts`
+- `packages/agent-runtime/src/types/*.type.ts`
+- `packages/agent-runtime/tests/*.test.ts`
 
-### 新增文件
+### 学习重点
 
-- `packages/agent-runtime/src/types/prompt.type.ts`
-- `packages/agent-runtime/src/prompts/default-agent-role-prompts.ts`
-- `packages/agent-runtime/tests/agent-profile.test.ts`
+类型集中放在 `src/types/*.type.ts`。实现文件只通过 `import type` 引用跨模块 contract，避免类型散落在业务代码里。
 
-### 核心类型和函数
+## Lesson 1.2 ModelProvider, config, and provider boundary
 
-- `PromptTemplate`：一段可版本化 prompt，包含 `id`、`kind`、`version`、`title`、`content`、`variables`。
-- `SystemPromptRef`：`AgentProfile` 对 system prompt 的引用，不直接把 prompt 文本塞进 profile。
-- `PromptStore`：后续把默认 prompt、用户编辑 prompt、项目 prompt 统一解析成 `PromptTemplate`。
-- `AgentRolePrompt`：默认 role 和 system prompt 的绑定关系。
-- `AgentProfile.systemPrompt`：每个 agent profile 必须显式指定 system prompt。
+### 目标
+
+让 agent loop 只依赖 `ModelProvider`，不直接依赖 OpenAI SDK 或 MIMO。
+
+### 关键文件
+
+- `src/types/provider.type.ts`
+- `src/providers/openai-compatible-provider.ts`
+- `src/providers/openai-compatible-provider-factory.ts`
+- `src/providers/provider-resolver.ts`
+- `src/config/mimo-agent-config.ts`
+- `src/providers/utils/openai-client.ts`
+- `src/providers/utils/openai-request-mapper.ts`
+- `src/providers/utils/openai-event-mapper.ts`
 
 ### 数据流
 
 ```text
 AgentRole
-  -> AgentProfile.systemPrompt
-  -> PromptStore.getSystemPrompt()
-  -> PromptTemplate
-  -> ContextBuilder system section
-  -> ModelRequest
+  -> resolveProviderForRole(config, role, { providerType })
+  -> modelRef
+  -> provider config
+  -> createOpenAICompatibleProviderFromEnv()
+  -> OpenAICompatibleModelProvider
+  -> ModelEvent stream
 ```
 
-Provider 不参与这条 prompt 解析路径。Provider 只接收已经构建好的 `ModelRequest`。
+### 当前实现
 
-### 设计说明
+- `resolveProviderForRole()` 通过 `providerType` 参数选择 provider 创建逻辑，不使用 callback 隐藏主流程。
+- `createOpenAICompatibleProviderFromEnv()` 从 env 读取 `apiKeyEnvName`，缺 key 时返回精确 `missing_api_key`。
+- `OpenAICompatibleModelProvider` 使用 OpenAI SDK 的 `baseURL` 支持 OpenAI-compatible 平台。
+- provider 内部缓存 SDK client，避免一次运行重复创建 client。
+- MIMO 是当前阶段的 provider 选项，不是产品默认配置。
 
-Amp prompt 的直接映射分为几类：
+### 当前简化
 
-- shared principles：`Agency`、`Conventions & Rules`、`AGENTS.md file`、`Context`、`Communication`，进入所有默认 role prompt。
-- `coder`：承接 `Task Management`，因为它是默认执行 agent。
-- `oracle`：承接 `Oracle`，但 Fate AI 第一阶段用显式 `@oracle` 或 visible handoff，不做隐藏后台 oracle。
-- `reviewer`：使用 shared principles，加上 review agent 的 findings-first 约束。
-- `explorer`：使用 shared principles，加上 read-only 搜索、路径、符号、关系输出约束。
+- 只支持 `providerType: "openai-compatible"`。
+- Anthropic / local provider 还没有 adapter。
+- SecretStore 还没有实现，当前只读 env。
 
-不直接进入默认 prompt 的内容：
-
-- Amp / Sourcegraph 品牌。
-- Amp 专属工具名和 tool JSON schema。
-- 查询 Amp 官网的产品说明规则。
-- Amp environment 示例。
-
-这些不属于 Fate AI runtime 的稳定语义。
-
-### 替代方案
-
-- 把 prompt 文本直接放在 `AgentProfile` 里：简单，但后续用户编辑、版本管理、Context Inspector 都会变难。
-- 把 prompt 交给 provider adapter：错误边界。provider 只负责模型调用，不应该决定 agent role。
-- 暂时不做 prompt 管理：会让 multi-agent 后续补设计时推翻 `AgentProfile`。
-
-### 测试说明
-
-- `AgentProfile` fixture 必须显式引用 `systemPrompt`。
-- 默认 role prompt 必须覆盖 `coder`、`oracle`、`reviewer`、`explorer`。
-- 后续实现 `PromptStore` 时，要测试 unknown prompt ref 返回 typed error，而不是让 context builder crash。
-
-### 常见错误
-
-- 不要把 Fate AI shared prompt 写成“coding agent”。coding 是第一阶段 `coder` 的职责，不是整个产品的永久身份。
-- 不要把 Amp 专属工具名写进 Fate AI prompt，除非 runtime 真的提供同名能力。
-- 不要在 provider 层硬编码 system prompt。
-
-## Lesson 1.3 ToolRegistry 最小实现
-
-状态：not started
+## Lesson 1.3 ToolRegistry and echo_tool
 
 ### 目标
 
-待实现后填写。
+让模型请求 tool 时，agent loop 通过 registry 执行 tool，而不是直接 import 某个 tool 函数。
 
-### 新增文件
+### 关键文件
 
-待实现后填写。
-
-### 核心类型和函数
-
-待实现后填写。
-
-### 数据流
-
-待实现后填写。
-
-### 设计说明
-
-待实现后填写。
-
-### 替代方案
-
-待实现后填写。
-
-### 测试说明
-
-待实现后填写。
-
-### 常见错误
-
-待实现后填写。
-
-## Lesson 1.4 HookRunner MVP
-
-状态：not started
-
-### 目标
-
-待实现后填写。
-
-### 新增文件
-
-待实现后填写。
-
-### 核心类型和函数
-
-待实现后填写。
-
-### 数据流
-
-待实现后填写。
-
-### 设计说明
-
-待实现后填写。
-
-### 替代方案
-
-待实现后填写。
-
-### 测试说明
-
-待实现后填写。
-
-### 常见错误
-
-待实现后填写。
-
-## Lesson 1.5 Context, prompt, memory, session, and permission stubs
-
-状态：not started
-
-### 目标
-
-把 1.2 定义的 system prompt 接入 context。ContextBuilder 不应该直接拼一个长字符串，而是输出可检查的 sections。
-
-本小节要做到：
-
-- 从 `AgentProfile.systemPrompt` 解析 `PromptTemplate`。
-- 把 system prompt 放进独立 `system` context section。
-- `AGENTS.md` 进入 `project_instructions` section。
-- recent messages、memory entries、tool results 保持独立 section。
-- 每个 section 都有 token estimate stub。
-
-### 新增文件
-
-待实现后填写。
-
-### 核心类型和函数
-
-- `ContextSection`：Context Inspector 后续展示的基本单位。
-- `ContextBuilder.build()`：接收 profile、messages、memory、tool results、prompt store，输出 sections。
-- `PromptStore.getSystemPrompt()`：根据 `SystemPromptRef` 解析 prompt。
+- `src/types/tool.type.ts`
+- `src/tools/tool-registry.ts`
+- `src/tools/echo-tool.ts`
+- `tests/tool-registry.test.ts`
 
 ### 数据流
 
 ```text
-RunTurnInput.profile.systemPrompt
-  -> PromptStore.getSystemPrompt()
-  -> ContextBuilder.build()
-  -> [{ kind: "system", content: prompt.content }, ...]
-  -> ModelRequest
+provider tool_call_done
+  -> AgentLoop
+  -> ToolRegistry.execute(name, input)
+  -> ToolResult
+  -> tool message
+  -> next provider request
 ```
 
-### 设计说明
+### 当前简化
 
-system prompt 必须是独立 section。原因有三个：
+- 只有 `echo_tool`。
+- 没有 file / shell / git tools。
+- 没有 permission check。
 
-- Context Inspector 需要单独展示 system prompt。
-- token 估算需要区分 system、messages、tools、files、memory。
-- 后续用户编辑、禁用、版本切换 prompt 时，不能改写原始 thread history。
+## Lesson 1.4 HookRunner
 
-### 替代方案
+### 当前状态
 
-- 把 system prompt 拼到第一条 message：实现快，但后续不可查看、不可编辑、不可追踪。
-- 每次在 agent loop 里临时拼 prompt：会让 agent loop 变成 prompt 管理器，违反边界。
+还没有真实实现。目录和测试占位存在，但没有 typed hook pipeline。
 
-### 测试说明
+### 后续要补
 
-- `ContextBuilder` 输出包含 `system` section。
-- `system` section 来自 `AgentProfile.systemPrompt` 解析结果。
-- 缺失 prompt ref 时返回 typed error 或可记录 event。
-- section token estimate 稳定。
+- `SessionStart`
+- `BeforeContextBuild`
+- `AfterContextBuild`
+- `PreToolUse`
+- `PostToolUse`
+- `Stop`
+- `UserInterrupt`
 
-### 常见错误
+HookRunner 真正接入后，agent loop 才能在 context、tool、stop 等关键点给扩展和安全策略留入口。
 
-- 不要把 `AGENTS.md` 合并进 system prompt。它是 project instruction section。
-- 不要让 provider adapter 读取 prompt store。
-- 不要把 secret、API key、credential 放进 prompt section。
+## Lesson 1.5 Context, session, memory, permission
+
+### 当前实现
+
+- `BasicContextBuilder` 会生成最小 system prompt、messages 和粗略 token estimate。
+- `InMemorySessionStore` 会记录 agent events，供 demo 和测试观察。
+
+### 关键文件
+
+- `src/context/context-builder.ts`
+- `src/types/context.type.ts`
+- `src/session/in-memory-session-store.ts`
+- `src/types/session.type.ts`
+
+### 当前简化
+
+- 还没有读取 `AGENTS.md` 作为真实 project instructions section。
+- 还没有 context window、context inspector、include / exclude。
+- 还没有 memory store。
+- 还没有 permission gate。
+- session 不是 persistence，只是内存事件列表。
 
 ## Lesson 1.6 AgentLoop MVP
 
-状态：not started
-
 ### 目标
 
-待实现后填写。
+实现一轮 user message 到 final answer 的最小闭环。
 
-### 新增文件
+### 关键文件
 
-待实现后填写。
-
-### 核心类型和函数
-
-待实现后填写。
+- `src/core/agent-loop.ts`
+- `src/types/runtime.type.ts`
+- `tests/agent-loop.test.ts`
 
 ### 数据流
 
-待实现后填写。
+```text
+runTurn()
+  -> append user_message event
+  -> contextBuilder.build()
+  -> provider.createMessage()
+  -> consume ModelEvent
+  -> execute tool if needed
+  -> append tool result message
+  -> provider.createMessage()
+  -> stop
+```
 
-### 设计说明
+### 当前 stop reasons
 
-待实现后填写。
+- `assistant_done`
+- `max_iterations`
+- `provider_error`
+- `user_interrupted`
+- `tool_error`
 
-### 替代方案
+`tool_use` 目前是 provider request 的中间 stop reason，不是 `RunTurnResult` 的最终成功状态。
 
-待实现后填写。
+### 当前简化
 
-### 测试说明
+- 没有 hook。
+- 没有 permission。
+- 没有 branch tree。
+- 没有真实 persistence。
 
-待实现后填写。
-
-### 常见错误
-
-待实现后填写。
-
-## Lesson 1.7 Demo, verification, and documentation sync
-
-状态：not started
+## Lesson 1.7 CLI demo and DEBUG logs
 
 ### 目标
 
-待实现后填写。
+提供可运行 demo，让学习者看到 agent loop 的真实调用过程。
 
-### 新增文件
+### 关键文件
 
-待实现后填写。
+- `src/demo/run-demo.ts`
+- `src/demo/utils/debug-logger.ts`
+- `src/demo/utils/debug-model-provider.ts`
+- `src/demo/utils/debug-session-store.ts`
+- `src/types/log.type.ts`
 
-### 核心类型和函数
+### Demo 路径
 
-待实现后填写。
+```text
+bun run demo
+  -> MIMO config
+  -> OpenAI-compatible provider
+  -> real provider request
+  -> provider returns events and usage
+```
 
-### 数据流
+### DEBUG 日志
 
-待实现后填写。
+`run-demo.ts` 显式设置 `DEBUG = true`。日志格式：
 
-### 设计说明
+```text
+HH:mm:ss sss[agentLoop][createMessage] provider request #0
+```
 
-待实现后填写。
+object 使用格式化 JSON 输出。`DebugModelProvider` 会给每次 provider call 分配 `callId`，并在结束时打印：
 
-### 替代方案
+- `durationMs`
+- `eventCount`
+- `stopReason`
+- 本次 `usage`
 
-待实现后填写。
+### 当前简化
 
-### 测试说明
+DEBUG logger 只服务 demo。runtime 内部默认不打印日志，后续 UI 观察能力应基于 event stream 和 session persistence，而不是 console log。
 
-待实现后填写。
+## 验证命令
 
-### 常见错误
+```bash
+cd packages/agent-runtime
+bun run check
+bun run typecheck
+bun test
+bun run demo
+```
 
-待实现后填写。
+当前环境里 `bun run demo` 如果无法访问 MIMO 网络，会返回 provider `Connection error.`。这说明 provider path 已走到真实网络请求边界。

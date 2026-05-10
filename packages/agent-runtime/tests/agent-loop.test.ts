@@ -1,13 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { BasicContextBuilder } from "../src/context/context-builder";
 import { AgentLoop } from "../src/core/agent-loop";
-import { TransportBackedModelProvider } from "../src/providers/model-provider-proxy";
-import { MockProviderTransport } from "../src/providers/provider-transport";
 import { InMemorySessionStore } from "../src/session/in-memory-session-store";
 import { echoTool } from "../src/tools/echo-tool";
 import { InMemoryToolRegistry } from "../src/tools/tool-registry";
 import type { AgentProfile } from "../src/types/agent.type";
-import type { ModelEvent } from "../src/types/provider.type";
+import type {
+  ModelEvent,
+  ModelProvider,
+  ModelRequest,
+} from "../src/types/provider.type";
 
 describe("agent loop", () => {
   it("runs a tool call and then returns a final answer", async () => {
@@ -94,15 +96,7 @@ describe("agent loop", () => {
 
 function createLoop(script: ModelEvent[]): AgentLoop {
   return new AgentLoop({
-    provider: new TransportBackedModelProvider(
-      {
-        providerId: "mock",
-        kind: "custom",
-        apiUrl: "mock://provider",
-        modelId: "mock-coder",
-      },
-      new MockProviderTransport(script)
-    ),
+    provider: new ScriptedTestProvider(script),
     toolRegistry: new InMemoryToolRegistry([echoTool]),
     contextBuilder: new BasicContextBuilder(),
     sessionStore: new InMemorySessionStore(),
@@ -118,8 +112,8 @@ function createProfile(): AgentProfile {
       promptId: "agent.coder.system",
     },
     model: {
-      providerId: "mock",
-      modelId: "mock-coder",
+      providerId: "test",
+      modelId: "test-coder",
     },
     allowedTools: ["echo_tool"],
     contextPolicy: {
@@ -136,4 +130,40 @@ function createProfile(): AgentProfile {
     },
     writeAccess: "workspace",
   };
+}
+
+class ScriptedTestProvider implements ModelProvider {
+  readonly id = "test";
+  private cursor = 0;
+  private readonly script: ModelEvent[];
+
+  constructor(script: ModelEvent[]) {
+    this.script = script;
+  }
+
+  async *createMessage(
+    _request: ModelRequest,
+    signal?: AbortSignal
+  ): AsyncIterable<ModelEvent> {
+    await Promise.resolve();
+
+    while (this.cursor < this.script.length) {
+      if (signal?.aborted) {
+        return;
+      }
+
+      const event = this.script[this.cursor];
+      this.cursor += 1;
+
+      if (!event) {
+        return;
+      }
+
+      yield event;
+
+      if (event.type === "done" || event.type === "error") {
+        return;
+      }
+    }
+  }
 }

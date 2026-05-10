@@ -1,6 +1,6 @@
 import type {
-  ModelProvider,
   OpenAICompatibleProviderOptions,
+  ProviderCreationResult,
   ProviderFactoryInput,
 } from "../types/provider.type";
 import { OpenAICompatibleModelProvider } from "./openai-compatible-provider";
@@ -10,20 +10,37 @@ export function createOpenAICompatibleProviderFromEnv(
   input: ProviderFactoryInput,
   env: NodeJS.ProcessEnv = process.env,
   options: Omit<OpenAICompatibleProviderOptions, "apiKey"> = {}
-): ModelProvider | undefined {
+): ProviderCreationResult {
   if (input.providerConfig.kind !== "openai") {
-    return undefined;
+    return {
+      ok: false,
+      error: {
+        code: "unsupported_provider_kind",
+        message: `Provider "${input.providerId}" uses kind "${input.providerConfig.kind}", not "openai".`,
+      },
+    };
   }
 
-  const apiKey = readRequiredApiKeyFromEnv(env, input.providerConfig.apiKeyEnvName );
+  const apiKey = readRequiredApiKeyFromEnv(
+    env,
+    input.providerConfig.apiKeyEnvName
+  );
 
-  // TODO: Error reading API key, return undefined, log error
   if (apiKey instanceof Error) {
-    return undefined;
+    return {
+      ok: false,
+      error: {
+        code: "missing_api_key",
+        message: apiKey.message,
+      },
+    };
   }
 
-  return new OpenAICompatibleModelProvider(input, {
-    ...options,
-    apiKey,
-  });
+  return {
+    ok: true,
+    provider: new OpenAICompatibleModelProvider(input, {
+      ...options,
+      apiKey,
+    }),
+  };
 }

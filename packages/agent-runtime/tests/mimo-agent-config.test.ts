@@ -11,8 +11,8 @@ describe("MIMO agent config option", () => {
     expect(config.providers.mimo).toEqual({
       kind: "openai",
       apiUrl: "https://api.xiaomimimo.com/v1",
-      apiUrlEnv: "MIMO_BASE_URL",
-      apiKeyEnv: "MIMO_API_KEY",
+      apiUrlEnvName: "MIMO_BASE_URL",
+      apiKeyEnvName: "MIMO_API_KEY",
     });
     expect(config.models["mimo-v2.5-pro"]).toEqual({
       providerId: "mimo",

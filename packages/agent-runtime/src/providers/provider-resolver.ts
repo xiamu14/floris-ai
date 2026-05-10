@@ -2,19 +2,22 @@ import type { AgentRole, ModelRef } from "../types/agent.type";
 import type {
   AgentRuntimeConfig,
   ModelConfig,
-  ModelProviderFactory,
+  ProviderCreationResult,
+  ProviderFactoryInput,
   ProviderResolutionErrorCode,
   ProviderResolutionFailure,
   ProviderResolutionIssue,
+  ProviderResolutionOptions,
   ProviderResolutionResult,
   ProviderResolutionSuccess,
   RoleModelConfig,
 } from "../types/provider.type";
+import { createOpenAICompatibleProviderFromEnv } from "./openai-compatible-provider-factory";
 
 export function resolveProviderForRole(
   config: AgentRuntimeConfig,
   requestedRole: AgentRole,
-  createProvider: ModelProviderFactory
+  options: ProviderResolutionOptions = {}
 ): ProviderResolutionResult {
   const issues: ProviderResolutionIssue[] = [];
   const roleConfig = resolveRoleConfig(config, requestedRole, issues);
@@ -31,12 +34,7 @@ export function resolveProviderForRole(
     roleConfig.modelRef,
     ...roleConfig.fallbackModelRefs,
   ]) {
-    const resolved = resolveModelProvider(
-      config,
-      modelRef,
-      createProvider,
-      issues
-    );
+    const resolved = resolveModelProvider(config, modelRef, options, issues);
 
     if (resolved) {
       return {
@@ -49,11 +47,7 @@ export function resolveProviderForRole(
     }
   }
 
-  return fail(
-    "provider_unavailable",
-    `No provider is available for agent role "${roleConfig.role}".`,
-    issues
-  );
+  return failFromIssues(roleConfig.role, issues);
 }
 
 function resolveRoleConfig(
@@ -78,7 +72,7 @@ function resolveRoleConfig(
 function resolveModelProvider(
   config: AgentRuntimeConfig,
   modelRef: string,
-  createProvider: ModelProviderFactory,
+  options: ProviderResolutionOptions,
   issues: ProviderResolutionIssue[]
 ):
   | Omit<ProviderResolutionSuccess, "ok" | "role" | "modelRef" | "issues">
@@ -93,9 +87,7 @@ function resolveModelProvider(
     return undefined;
   }
 
-
   const providerConfig = config.providers[modelConfig.providerId];
-
 
   if (!providerConfig) {
     issues.push({
@@ -105,25 +97,51 @@ function resolveModelProvider(
     return undefined;
   }
 
-  const provider = createProvider({
-    providerId: modelConfig.providerId,
-    providerConfig,
-    modelConfig,
-  });
+  const result = createProvider(
+    {
+      providerId: modelConfig.providerId,
+      providerConfig,
+      modelConfig,
+    },
+    options
+  );
 
-  if (!provider) {
+  if (!result.ok) {
     issues.push({
-      code: "provider_unavailable",
-      message: `Provider "${modelConfig.providerId}" is not available.`,
+      code: result.error.code,
+      message: result.error.message,
     });
     return undefined;
   }
 
   return {
-    provider,
+    provider: result.provider,
     model: toModelRef(modelConfig),
     providerConfig,
     modelConfig,
+  };
+}
+
+function createProvider(
+  input: ProviderFactoryInput,
+  options: ProviderResolutionOptions
+): ProviderCreationResult {
+  const providerType = options.providerType ?? "openai-compatible";
+
+  if (providerType === "openai-compatible") {
+    return createOpenAICompatibleProviderFromEnv(
+      input,
+      options.env,
+      options.openAIOptions
+    );
+  }
+
+  return {
+    ok: false,
+    error: {
+      code: "unsupported_provider_type",
+      message: `Provider type "${providerType}" is not supported.`,
+    },
   };
 }
 
@@ -132,6 +150,29 @@ function toModelRef(modelConfig: ModelConfig): ModelRef {
     providerId: modelConfig.providerId,
     modelId: modelConfig.modelId,
   };
+}
+
+function failFromIssues(
+  role: AgentRole,
+  issues: ProviderResolutionIssue[]
+): ProviderResolutionFailure {
+  const lastIssue = issues.at(-1);
+
+  if (lastIssue && isResolutionErrorCode(lastIssue.code)) {
+    return fail(lastIssue.code, lastIssue.message, issues);
+  }
+
+  return fail(
+    "provider_unavailable",
+    `No provider is available for agent role "${role}".`,
+    issues
+  );
+}
+
+function isResolutionErrorCode(
+  code: ProviderResolutionIssue["code"] | ProviderResolutionErrorCode
+): code is ProviderResolutionErrorCode {
+  return code !== "missing_agent_role";
 }
 
 function fail(

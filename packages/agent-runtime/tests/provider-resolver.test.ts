@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { resolveProviderForRole } from "../src/providers/provider-resolver";
-import type {
-  AgentRuntimeConfig,
-  ModelProvider,
-  ProviderFactoryInput,
-} from "../src/types/provider.type";
+import type { AgentRuntimeConfig } from "../src/types/provider.type";
 
 const config: AgentRuntimeConfig = {
   defaultRole: "coder",
@@ -12,12 +8,12 @@ const config: AgentRuntimeConfig = {
     openai: {
       kind: "openai",
       apiUrl: "https://api.openai.com/v1",
-      apiKeyEnv: "OPENAI_API_KEY",
+      apiKeyEnvName: "OPENAI_API_KEY",
     },
-    anthropic: {
-      kind: "anthropic",
-      apiUrl: "https://api.anthropic.com",
-      apiKeyEnv: "ANTHROPIC_API_KEY",
+    backup: {
+      kind: "openai",
+      apiUrl: "https://api.backup.example/v1",
+      apiKeyEnvName: "BACKUP_API_KEY",
     },
   },
   models: {
@@ -26,8 +22,8 @@ const config: AgentRuntimeConfig = {
       modelId: "gpt-4.1-mini",
     },
     strong: {
-      providerId: "anthropic",
-      modelId: "claude-sonnet-4-5",
+      providerId: "backup",
+      modelId: "backup-strong",
     },
   },
   agents: {
@@ -46,7 +42,13 @@ const config: AgentRuntimeConfig = {
 
 describe("provider resolver", () => {
   it("resolves a role to a configured provider and model", () => {
-    const result = resolveProviderForRole(config, "coder", createProvider);
+    const result = resolveProviderForRole(config, "coder", {
+      providerType: "openai-compatible",
+      env: {
+        OPENAI_API_KEY: "test-key",
+        BACKUP_API_KEY: "backup-key",
+      },
+    });
 
     expect(result.ok).toBe(true);
 
@@ -73,7 +75,13 @@ describe("provider resolver", () => {
         },
       },
       "reviewer",
-      createProvider
+      {
+        providerType: "openai-compatible",
+        env: {
+          OPENAI_API_KEY: "test-key",
+          BACKUP_API_KEY: "backup-key",
+        },
+      }
     );
 
     expect(result.ok).toBe(true);
@@ -86,34 +94,38 @@ describe("provider resolver", () => {
   });
 
   it("tries fallback model refs when the primary provider is unavailable", () => {
-    const result = resolveProviderForRole(config, "coder", (input) => {
-      if (input.providerId === "openai") {
-        return undefined;
-      }
-
-      return createProvider(input);
+    const result = resolveProviderForRole(config, "coder", {
+      providerType: "openai-compatible",
+      env: {
+        BACKUP_API_KEY: "backup-key",
+      },
     });
 
     expect(result.ok).toBe(true);
-    expect(result.issues[0]?.code).toBe("provider_unavailable");
+    expect(result.issues[0]?.code).toBe("missing_api_key");
+    expect(result.issues[0]?.message).toBe(
+      'Environment variable "OPENAI_API_KEY" is not set.'
+    );
 
     if (result.ok) {
-      expect(result.provider.id).toBe("anthropic");
-      expect(result.model.modelId).toBe("claude-sonnet-4-5");
+      expect(result.provider.id).toBe("backup");
+      expect(result.model.modelId).toBe("backup-strong");
+    }
+  });
+
+  it("returns a precise error when no provider can be created", () => {
+    const result = resolveProviderForRole(config, "oracle", {
+      providerType: "openai-compatible",
+      env: {},
+    });
+
+    expect(result.ok).toBe(false);
+
+    if (!result.ok) {
+      expect(result.error).toEqual({
+        code: "missing_api_key",
+        message: 'Environment variable "OPENAI_API_KEY" is not set.',
+      });
     }
   });
 });
-
-function createProvider(input: ProviderFactoryInput): ModelProvider {
-  return {
-    id: input.providerId,
-    async *createMessage() {
-      await Promise.resolve();
-
-      yield {
-        type: "done",
-        stopReason: "end_turn",
-      };
-    },
-  };
-}

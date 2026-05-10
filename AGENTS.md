@@ -150,6 +150,15 @@ Runtime schema 规则：
 - 不允许同一份 contract 同时维护 ArkType 和 Zod 两套 schema，除非是明确的 adapter 层。
 - ArkType 是 Fate AI 内部 contract 的默认 runtime schema；provider adapter 负责把内部 schema 转成外部 API 需要的 schema shape。
 
+Runtime factory 和错误处理规则：
+
+- 核心 runtime 的选择、创建和分发逻辑优先使用明确的 typed options 或参数，例如 `providerType`。不要用 callback 高阶函数隐藏主流程，否则阅读代码时需要频繁跳转，review 成本高。
+- 如果确实需要 callback / factory function 作为 extension boundary，先和用户讨论原因、边界和替代方案，再写入代码。
+- 错误信息必须准确保留到调用方。不要 `instanceof Error` 后吞掉错误并返回 `undefined`，再让上层包装成泛化的 `provider_unavailable` 之类错误。
+- provider、config、env、secret 这类边界要返回结构化错误，至少包含稳定 `code` 和可读 `message`，方便 demo、UI 和测试直接定位问题。
+- 过程日志必须通过明确的 `DEBUG` 参数控制，默认 `false`。示例、demo 或排查脚本可以显式传 `DEBUG: true`，但 runtime 内部不能默认打印。
+- 调试日志格式统一为 `HH:mm:ss sss[groupName][step] message`。`groupName` 必须表达运行阶段，例如 `config`、`provider`、`agentLoop`、`tool`、`context`、`session`，不能用 `demo` 这类低信息量名称。日志内容保持简洁；object 必须格式化输出，不能把大对象压成一行。
+
 推荐分组：
 
 - `agent.type.ts`：`AgentProfile`、agent role、agent role definition、model policy。
@@ -486,7 +495,7 @@ API key 第一阶段先使用平台无关的本地加密配置保存，不绑定
 
 ### Lesson 1: MVP Agent Loop
 
-Lesson 1 的目标是实现一个能跑通的 TypeScript agent runtime MVP：目录结构清楚，agent loop 能发送 user message、调用 provider、执行一个 mock tool、处理停止条件、记录事件。不要在第一课深挖完整权限、完整 persistence、完整 provider SDK 或 UI。
+Lesson 1 的目标是实现一个能跑通的 TypeScript agent runtime MVP：目录结构清楚，agent loop 能发送 user message、调用真实 AI API provider、执行 `echo_tool`、处理停止条件、记录事件。学习本项目时默认已经提供可用 AI API 平台，不用替代真实模型调用的 demo 路径。
 
 Lesson 1 拆成 7 个小节：
 
@@ -495,15 +504,15 @@ Lesson 1 拆成 7 个小节：
    - 建立 `src/types` 和 `src/prompts`，但不在 1.1 一次写完所有类型。
    - 测试要求：tooling 命令能跑，placeholder tests 可执行。
 
-2. ModelProvider、Prompt 和 provider transport boundary
+2. ModelProvider、Prompt 和 provider boundary
    - 定义平台无关的 `ModelProvider`、`ModelRequest`、`ModelEvent`。
    - 定义 `AgentProfile.systemPrompt`、`PromptTemplate`、`SystemPromptRef` 和默认 agent role system prompt。
-   - 实现 `ProviderTransport` 和 `MockProviderTransport`，在真实 provider 请求边界前后拦截并返回 scripted response。
-   - 测试要求：mock transport 可以稳定 replay，支持 AbortSignal；agent profile 必须显式引用 system prompt。
+   - 实现 OpenAI-compatible provider adapter，让 MIMO 这类平台走真实 API 调用路径。
+   - 测试要求：provider adapter 映射稳定；agent profile 必须显式引用 system prompt。
 
 3. ToolRegistry 最小实现
    - 定义 `Tool`、`ToolInputSchema`、`ToolResult`。
-   - 实现一个 mock `echo_tool` 或 `read_project_file`。
+   - 实现 `echo_tool`。
    - 测试要求：tool call 能成功返回结果，未知 tool 返回可恢复错误。
 
 4. HookRunner MVP
@@ -524,10 +533,10 @@ Lesson 1 拆成 7 个小节：
    - 测试要求：无 tool 直接结束；一次 tool call 后结束；超过 `max_iterations` 停止。
 
 7. Lesson 1 总结和可运行 demo
-   - 提供 CLI demo：输入一条 user message，`ModelProvider` 通过 mock transport 先请求 tool，再输出最终回答。
+   - 提供 CLI demo：输入一条 user message，通过真实 OpenAI-compatible provider 运行完整 agent loop。
    - 记录 session events 到 in-memory session store，JSONL persistence 留到后续 lesson。
    - 总结哪些是 MVP 简化版，列出下一课要深化的点。
-   - 测试要求：一条命令可以跑完整 demo；单元测试覆盖主要 loop path。
+   - 测试要求：`bun run demo` 可以观察真实 provider request、provider event 和 token usage；单元测试覆盖主要 loop path。
 
 Lesson 1 之后再拆章节深入：
 
@@ -654,6 +663,14 @@ Code agent 默认运行在用户本机项目目录内，但权限模型必须保
 - `docs/teaching/lessonN/notes.md`：实现过程中同步更新的教学笔记，让用户能独立理解和重写。
 - `docs/teaching/lessonN/implementation-breakdown.md`：代码完成后基于真实代码和运行结果写的实现拆解。
 
+Lesson tag 规则：
+
+- 每个 lesson 的可学习实现步骤都要打 tag，方便学习者按 tag 查看实现过程。
+- 修改 lesson 文档或实现时，必须说明新增能力对应哪个 lesson 小节，以及对应哪个 tag。
+- 一个 tag 可以覆盖多个小节，但文档必须明确覆盖范围，例如 `Lesson 1.1` 到 `Lesson 1.3`。
+- 如果某个小节只是为了 demo 提供支撑代码，不能写成该小节完整实现。要使用 `partial`、`supporting` 或等价准确表述。
+- 后续增强同一 lesson 时，要在 plan、notes 或 implementation breakdown 中补充“小节 -> tag”的对应关系，不能只写一段泛化总结。
+
 每个设计文档默认包含：
 
 - 背景
@@ -687,7 +704,7 @@ Code agent 默认运行在用户本机项目目录内，但权限模型必须保
 默认约束：
 
 - agent 差异用 `AgentProfile` 数据表达，不用 subclass 表达。
-- agent loop 只通过 `ModelProvider` 调用模型，不直接调用 SDK、transport 或 mock。
+- agent loop 只通过 `ModelProvider` 调用模型，不直接调用 SDK。
 - tool 只通过 `ToolRegistry` 执行。
 - hooks 使用 typed event pipeline，不使用继承覆写流程。
 - runtime 输出以 `AgentEvent` 为主，UI、session、debug 都消费 event。
@@ -700,24 +717,25 @@ Code agent 默认运行在用户本机项目目录内，但权限模型必须保
 日志必须可检索、可过滤、可定位。所有 runtime、tool、provider、permission、context、memory、UI 关键日志都使用统一前缀：
 
 ```text
-[groupName][eventName] message
+HH:mm:ss sss[groupName][eventName] message
 ```
 
 示例：
 
 ```text
-[agentLoop][turnStarted] threadId=... branchId=...
-[agentLoop][stopReason] reason=assistant_done iterations=2
-[provider][requestStarted] provider=openai model=...
-[tool][executionFinished] tool=echo_tool status=success
-[permission][decision] decision=allow source=default
-[context][built] sections=4 tokenEstimate=1234
-[memory][selected] count=2 scope=project
+10:33:06 602[agentLoop][turnStarted] threadId=... branchId=...
+10:33:06 710[agentLoop][stopReason] reason=assistant_done iterations=2
+10:33:06 811[provider][requestStarted] provider=openai model=...
+10:33:06 920[tool][executionFinished] tool=echo_tool status=success
+10:33:07 031[permission][decision] decision=allow source=default
+10:33:07 142[context][built] sections=4 tokenEstimate=1234
+10:33:07 253[memory][selected] count=2 scope=project
 ```
 
 命名规则：
 
 - `groupName` 使用 lower camel case，例如 `agentLoop`、`provider`、`tool`、`permission`、`context`、`memory`、`session`、`ui`。
+- `groupName` 必须用于区分阶段，不要使用 `demo`、`app`、`misc` 这类无法定位运行阶段的名称。
 - `eventName` 使用 lower camel case，例如 `turnStarted`、`requestStarted`、`executionFinished`。
 - prefix 后的 message 优先使用 `key=value`，方便搜索和后续结构化解析。
 - 同一类事件的 key 名要稳定，不要每次换写法。

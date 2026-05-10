@@ -2,14 +2,14 @@ import { describe, expect, it } from "vitest";
 import { createOpenAICompatibleProviderFromEnv } from "../src/providers/openai-compatible-provider-factory";
 
 describe("OpenAI-compatible provider factory", () => {
-  it("returns undefined when required api key env is missing", () => {
-    const provider = createOpenAICompatibleProviderFromEnv(
+  it("returns a precise error when required api key env is missing", () => {
+    const result = createOpenAICompatibleProviderFromEnv(
       {
         providerId: "compatible",
         providerConfig: {
           kind: "openai",
           apiUrl: "https://api.compatible.example/v1",
-          apiKeyEnv: "COMPATIBLE_API_KEY",
+          apiKeyEnvName: "COMPATIBLE_API_KEY",
         },
         modelConfig: {
           providerId: "compatible",
@@ -19,17 +19,23 @@ describe("OpenAI-compatible provider factory", () => {
       {}
     );
 
-    expect(provider).toBeUndefined();
+    expect(result).toEqual({
+      ok: false,
+      error: {
+        code: "missing_api_key",
+        message: 'Environment variable "COMPATIBLE_API_KEY" is not set.',
+      },
+    });
   });
 
   it("creates a provider when required api key env is present", () => {
-    const provider = createOpenAICompatibleProviderFromEnv(
+    const result = createOpenAICompatibleProviderFromEnv(
       {
         providerId: "compatible",
         providerConfig: {
           kind: "openai",
           apiUrl: "https://api.compatible.example/v1",
-          apiKeyEnv: "COMPATIBLE_API_KEY",
+          apiKeyEnvName: "COMPATIBLE_API_KEY",
         },
         modelConfig: {
           providerId: "compatible",
@@ -41,6 +47,10 @@ describe("OpenAI-compatible provider factory", () => {
       }
     );
 
-    expect(provider?.id).toBe("compatible");
+    expect(result.ok).toBe(true);
+
+    if (result.ok) {
+      expect(result.provider.id).toBe("compatible");
+    }
   });
 });

@@ -8,6 +8,8 @@ import type { TokenUsage } from "./runtime.type";
 
 export type ProviderKind = "openai" | "anthropic" | "local" | "custom";
 
+export type ProviderRuntimeType = "openai-compatible";
+
 export interface AgentRuntimeConfig {
   defaultRole: AgentRole;
   providers: Record<string, ProviderConfig>;
@@ -126,36 +128,41 @@ export interface ModelProviderError {
   retryable: boolean;
 }
 
-export interface ProviderTransport {
-  send(
-    request: ProviderTransportRequest,
-    signal?: AbortSignal
-  ): AsyncIterable<ModelEvent>;
-}
-
-export interface ProviderTransportRequest extends ModelRequest {
-  provider: ResolvedProviderRef;
-}
-
-export interface ResolvedProviderRef {
-  providerId: string;
-  kind: ProviderKind;
-  apiUrl: string;
-  apiUrlEnv?: string;
-  modelId: string;
-  apiKeyEnv?: string;
-  apiKeySecretRef?: string;
-}
-
 export interface ProviderFactoryInput {
   providerId: string;
   providerConfig: ProviderConfig;
   modelConfig: ModelConfig;
 }
 
-export type ModelProviderFactory = (
-  input: ProviderFactoryInput
-) => ModelProvider | undefined;
+export interface ProviderResolutionOptions {
+  providerType?: ProviderRuntimeType;
+  env?: NodeJS.ProcessEnv;
+  openAIOptions?: Omit<OpenAICompatibleProviderOptions, "apiKey">;
+}
+
+export type ProviderCreationResult =
+  | ProviderCreationSuccess
+  | ProviderCreationFailure;
+
+export interface ProviderCreationSuccess {
+  ok: true;
+  provider: ModelProvider;
+}
+
+export interface ProviderCreationFailure {
+  ok: false;
+  error: ProviderCreationError;
+}
+
+export interface ProviderCreationError {
+  code: ProviderCreationErrorCode;
+  message: string;
+}
+
+export type ProviderCreationErrorCode =
+  | "missing_api_key"
+  | "unsupported_provider_kind"
+  | "unsupported_provider_type";
 
 export type ProviderResolutionResult =
   | ProviderResolutionSuccess
@@ -187,7 +194,8 @@ export type ProviderResolutionErrorCode =
   | "missing_default_role"
   | "missing_model_ref"
   | "missing_provider"
-  | "provider_unavailable";
+  | "provider_unavailable"
+  | ProviderCreationErrorCode;
 
 export interface ProviderResolutionIssue {
   code: ProviderResolutionIssueCode;
@@ -198,11 +206,12 @@ export type ProviderResolutionIssueCode =
   | "missing_agent_role"
   | "missing_model_ref"
   | "missing_provider"
-  | "provider_unavailable";
+  | "provider_unavailable"
+  | ProviderCreationErrorCode;
 
 export interface OpenAICompatibleProviderOptions {
   client?: OpenAIChatCompletionsClient;
-  apiKey: string;
+  apiKey?: string;
 }
 
 export interface OpenAIChatCompletionsClient {

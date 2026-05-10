@@ -17,8 +17,8 @@ describe("agent profile", () => {
         version: "1",
       },
       model: {
-        providerId: "mock",
-        modelId: "mock-coder",
+        providerId: "test",
+        modelId: "test-coder",
       },
       allowedTools: ["echo_tool"],
       contextPolicy: {

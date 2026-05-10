@@ -4,6 +4,26 @@
 
 当前状态：in progress
 
+当前代码 tag 覆盖 Lesson 1.1 到 Lesson 1.3 的学习目标，并额外提供最小 agent-loop debug demo。它不代表 Lesson 1.4 之后的 session、context window、hooks、permission、memory 等能力已经完成。
+
+当前学习 tag：
+
+```text
+lesson1-agent-loop-basic-debug
+```
+
+小节和 tag 对应关系：
+
+| 小节 | 对应 tag | 状态 |
+| --- | --- | --- |
+| Lesson 1.1 Runtime skeleton | `lesson1-agent-loop-basic-debug` | learning complete |
+| Lesson 1.2 ModelProvider boundary | `lesson1-agent-loop-basic-debug` | learning complete |
+| Lesson 1.3 ToolRegistry and first tool | `lesson1-agent-loop-basic-debug` | learning complete |
+| Lesson 1.4 HookRunner MVP | 后续 tag | not implemented |
+| Lesson 1.5 Context / memory / session / permission | 后续 tag | not implemented as capability |
+| Lesson 1.6 AgentLoop state machine | 后续 tag | partial, only basic call path used by demo |
+| Lesson 1.7 CLI demo and docs | 后续 tag | partial, only debug demo exists |
+
 本计划对应教学规划：
 
 - `docs/teaching/lesson1/README.md`
@@ -11,7 +31,7 @@
 
 ## 实现目标
 
-实现一个 TypeScript `agent-runtime` MVP。它能通过正式 `ModelProvider` path 加 mock transport 跑通一次 agent turn：
+完整 Lesson 1 目标是实现一个 TypeScript `agent-runtime` MVP。它能通过正式 `ModelProvider` path 和真实 AI API provider 跑通一次 agent turn：
 
 1. 接收 user message。
 2. 构建 context。
@@ -26,10 +46,10 @@
 
 ## 实现边界
 
-本轮实现：
+Lesson 1 完整计划范围：
 
 - TypeScript runtime package。
-- ModelProvider + ProviderTransport + mock transport。
+- ModelProvider + OpenAI-compatible provider adapter。
 - Prompt contracts + default agent role system prompts。
 - Tool registry。
 - Agent loop MVP。
@@ -41,9 +61,30 @@
 - CLI demo。
 - 单元测试。
 
-本轮不实现：
+当前 tag 已实现的 Lesson 1.1 到 Lesson 1.3 学习内容：
 
-- 真实 LLM provider。
+- `ModelProvider` path、OpenAI-compatible provider adapter。
+- `echo_tool` 和 tool result 回填。
+- MIMO config、env API key 读取、role/provider/model resolver。
+- runtime package、类型目录、测试、check、demo 脚本。
+
+当前 tag 额外提供的观察能力：
+
+- `AgentLoop.runTurn()` 的基本调用路径。
+- demo DEBUG 日志：provider request、provider event、单次 provider call duration 和 token usage。
+
+当前 tag 未实现的 Lesson 1 能力：
+
+- HookRunner pipeline。
+- Context window / Context Inspector。
+- session persistence / branch tree。
+- MemoryStore。
+- PermissionGate。
+- file / shell / git tools。
+
+Lesson 1 完整计划不实现：
+
+- 完整多 provider 体系。
 - SwiftUI。
 - 真实权限审核 agent。
 - SQLite / SwiftData。
@@ -82,8 +123,9 @@ packages/
         messages.ts
       providers/
         model-provider.ts
-        provider-transport.ts
-        model-provider-proxy.ts
+        openai-compatible-provider.ts
+        openai-compatible-provider-factory.ts
+        provider-resolver.ts
       tools/
         tool.ts
         tool-registry.ts
@@ -118,7 +160,6 @@ packages/
       demo/
         run-demo.ts
     tests/
-      provider-transport.test.ts
       tool-registry.test.ts
       hook-runner.test.ts
       context-builder.test.ts
@@ -131,7 +172,7 @@ Lesson 1 固定为 7 个小节。README、plan、notes、implementation breakdow
 
 ### Lesson 1.1 Runtime skeleton, package layout, and baseline tooling
 
-状态：done
+状态：learning complete in `lesson1-agent-loop-basic-debug`
 
 目标：
 
@@ -161,44 +202,35 @@ Lesson 1 固定为 7 个小节。README、plan、notes、implementation breakdow
 
 ### Lesson 1.2 ModelProvider, prompt contracts, and provider transport boundary
 
-状态：planned
+状态：learning complete in `lesson1-agent-loop-basic-debug`
 
 目标：
 
-- 定义 `ModelProvider`、`ModelRequest`、`ModelEvent`、`ProviderTransport`。
+- 定义 `ModelProvider`、`ModelRequest`、`ModelEvent`。
 - 定义 `PromptTemplate`、`SystemPromptRef`、`PromptStore`。
 - 定义 `AgentProfile.systemPrompt` 和 `AgentRoleDefinition.systemPrompt`。
 - 基于 Amp Code system prompt 提供默认 `coder`、`oracle`、`reviewer`、`explorer` system prompt。
 - 定义 `agent.config.ts` 里 provider、model、agent role 的最小配置形状。
 - 定义 `AgentRole` 到 `ModelProvider` 的解析流程和 fallback 规则。
-- 实现 `TransportBackedModelProvider` 或等价 provider wrapper。
-- 实现 `MockProviderTransport`，用于测试和 demo。
+- 实现 OpenAI-compatible provider adapter，用 MIMO 这类平台验证真实调用。
 
 设计模式选择：
 
-- `ModelProvider` 使用 Strategy。`AgentLoop` 只依赖这个接口，不关心 Anthropic、OpenAI、本地模型或 mock。
+- `ModelProvider` 使用 Strategy。`AgentLoop` 只依赖这个接口，不关心 Anthropic、OpenAI 或本地模型。
 - 真实 provider 接入时使用 Adapter。不同 SDK 的 request、response、stop reason、tool call shape 都转成 Fate AI 内部 `ModelRequest` / `ModelEvent`。
-- `ProviderTransport` 使用 Proxy / Decorator 思路。真实网络请求、mock、日志、retry、rate limit、record / replay 都在这个请求发送边界扩展。
+- DEBUG provider wrapper 使用 Decorator 思路观察真实请求。真实网络请求、日志、token usage 都围绕 provider boundary 展示。
 - `ModelEvent` stream 使用 `AsyncIterable`。Provider 可以流式输出 `text_delta`、`tool_call_done`、`usage`、`done`、`error`，UI 和 session 后续都能逐步消费。
 - 模型返回的 tool call 按 Command 思路处理：provider 只产出 `{ id, name, input }`，执行交给 `ToolRegistry`。
 
 不采用：
 
 - 不使用继承式 `BaseProvider` + subclass。Provider 差异用 adapter 和 plain object contract 表达，避免把 OpenAI / Anthropic / local model 的差异塞进父类模板。
-- 不使用 Abstract Factory。Lesson 1 只有一个 OpenAI-compatible provider factory 和一个 mock transport，还不需要 provider registry 或复杂创建逻辑。
-- 不让 `MockProviderTransport` 成为一个可被 agent profile 选择的 provider。它只是 transport 边界上的测试替身。
+- 不使用 Abstract Factory。Lesson 1 只有一个 OpenAI-compatible provider factory，还不需要 provider registry 或复杂创建逻辑。
+- 不提供替代真实模型调用的 demo 路径。token usage 是项目核心观察对象，学习路径必须使用真实 AI API 平台。
 
 推荐结构：
 
 ```text
-test / demo:
-AgentLoop
-  -> ModelProvider
-      -> TransportBackedModelProvider
-          -> ProviderTransport
-              -> MockProviderTransport
-
-real OpenAI-compatible provider:
 AgentLoop
   -> ModelProvider
       -> OpenAICompatibleModelProvider
@@ -226,8 +258,8 @@ export default defineAgentConfig({
     mimo: {
       kind: "openai",
       apiUrl: env.MIMO_BASE_URL ?? "https://api.xiaomimimo.com/v1",
-      apiUrlEnv: "MIMO_BASE_URL",
-      apiKeyEnv: "MIMO_API_KEY",
+      apiUrlEnvName: "MIMO_BASE_URL",
+      apiKeyEnvName: "MIMO_API_KEY",
     },
   },
   prompts: {
@@ -291,7 +323,7 @@ OpenAI-compatible provider 创建流程：
 ```text
 ProviderFactoryInput
   -> createOpenAICompatibleProviderFromEnv()
-  -> read MIMO_API_KEY from env when apiKeyEnv is configured
+  -> read MIMO_API_KEY from env when apiKeyEnvName is configured
   -> if missing, return provider unavailable to resolver
   -> pass explicit apiKey into OpenAICompatibleModelProvider
   -> OpenAICompatibleModelProvider creates OpenAI SDK client with apiUrl + apiKey
@@ -313,9 +345,8 @@ Factory 和 provider 的边界：
 - `modelId` 通过 role 的 `modelRef` 解析得到，不在 agent loop 里硬编码。
 - `systemPrompt` 通过 role 的 `systemPromptRef` 解析得到，不在 agent loop 或 provider 里硬编码。
 - fallback 必须记录原因，例如 `missing_agent_role`、`missing_model_ref`、`missing_provider`、`provider_unavailable`。
-- 产品运行时如果所有真实 provider 都不可用，要返回配置错误并引导用户设置 provider。不能自动切到 `MockProviderTransport`。
-- test 和 demo 可以显式注入 `MockProviderTransport`，但这条 path 不进入用户配置。
-- API key 只通过 `apiKeyEnv` 或后续 `SecretStore` 读取，不进入 prompt、不写入 event payload。
+- 产品运行时如果所有真实 provider 都不可用，要返回配置错误并引导用户设置 provider。
+- API key 只通过 `apiKeyEnvName` 或后续 `SecretStore` 读取，不进入 prompt、不写入 event payload。
 
 Prompt 来源和映射规则：
 
@@ -326,26 +357,13 @@ Prompt 来源和映射规则：
 - Amp 专属品牌、Sourcegraph/Amp 说明、具体工具名、tool JSON schema、Amp 官网查询说明、环境样例不进入默认 prompt。
 - shared prompt 只能描述 Fate AI agent runtime，不把整个产品永久写成 coding agent。coding 角色限定在 `coder` prompt。
 
-Mock transport script 示例：
-
-```ts
-[
-  { type: "tool_call_done", toolCall: { name: "echo_tool", input: { text: "hello" } } },
-  { type: "done", stopReason: "tool_use" },
-  { type: "text_delta", text: "tool returned hello" },
-  { type: "done", stopReason: "end_turn" }
-]
-```
-
 设计要求：
 
-- agent loop 只能依赖 `ModelProvider`，不能直接依赖 `MockProviderTransport`。
+- agent loop 只能依赖 `ModelProvider`，不能直接依赖具体 SDK。
 - `ModelProvider.createMessage()` 返回 `AsyncIterable<ModelEvent>`，不要一次性返回完整 response。
-- mock 必须在 provider 请求发送边界拦截，模拟真实 provider 返回的 `ModelEvent`。
 - OpenAI-compatible 真实 provider 使用官方 `openai` SDK，第三方 OpenAI-compatible 平台通过 `apiUrl` / SDK `baseURL` 接入。
 - provider adapter 负责把 SDK response 转成 Fate AI 内部事件，agent loop 不处理 SDK 原始对象。
-- `tool_call_delta` 这类 provider 原始 streaming 细节不进入 agent loop。Lesson 1 mock 直接输出完整 `tool_call_done`，后续真实 adapter 内部完成 delta 拼接。
-- `MockProviderTransport` 只用于 test 和 demo，不进入 agent profile，不作为产品 provider 选项。
+- `tool_call_delta` 这类 provider 原始 streaming 细节不进入 agent loop。后续 streaming adapter 内部完成 delta 拼接。
 - Provider 不负责 tool 执行、permission、hook、session 写入或 API key 存储。
 - Lesson 1 使用 env 读取 MIMO API key。后续真实产品可以通过 `SecretStore` adapter 替换 env 读取；runtime 不直接依赖 macOS Keychain。
 - Provider 不负责选择 `AgentRole`。role resolution 在 provider 创建之前完成，provider 只接收已经解析好的 `providerId`、`apiUrl`、`modelId`。
@@ -361,14 +379,12 @@ Lesson 1 的 `ModelEvent`：
 
 实现文件：
 
-- `src/types/provider.type.ts`：`ModelProvider`、`ModelRequest`、`ModelEvent`、`ProviderTransport`、transport request / event 类型。
+- `src/types/provider.type.ts`：`ModelProvider`、`ModelRequest`、`ModelEvent`、provider config 和 resolver result 类型。
 - `src/types/agent.type.ts`：`AgentProfile`、`AgentRole`、`AgentRoleDefinition`、`ModelRef`、agent model fallback policy。
 - `src/types/prompt.type.ts`：`PromptTemplate`、`SystemPromptRef`、`AgentRolePrompt`、`PromptStore`。
 - `src/types/message.type.ts`：本小节需要的最小 message contract。
 - `src/types/provider-config.type.ts` 或 `src/types/provider.type.ts`：`AgentConfig`、`ProviderConfig`、`ModelConfig`、`RoleModelConfig`。Lesson 1 可以先放在 `provider.type.ts`，后续配置复杂后再拆文件。
 - `src/providers/model-provider.ts`：只导出 provider contract 或薄 wrapper，不放 SDK 代码。
-- `src/providers/provider-transport.ts`：`ProviderTransport` 相关实现入口。
-- `src/providers/model-provider-proxy.ts`：`TransportBackedModelProvider`，把 `ProviderTransport` 暴露成 `ModelProvider`。
 - `src/providers/openai-compatible-provider.ts`：OpenAI-compatible provider class，只负责调用 SDK 和输出 `ModelEvent`。
 - `src/providers/openai-compatible-provider-factory.ts`：从 env 读取 API key，检查后创建 OpenAI-compatible provider。
 - `src/providers/utils/openai-client.ts`：创建 OpenAI SDK client 和读取必需 API key。
@@ -376,7 +392,6 @@ Lesson 1 的 `ModelEvent`：
 - `src/providers/utils/openai-event-mapper.ts`：OpenAI SDK response 到 `ModelEvent` 的映射。
 - `src/prompts/default-agent-role-prompts.ts`：默认 agent role system prompts。
 - `src/providers/provider-resolver.ts`：把 `agent.config.ts` + `AgentRole` 解析成具体 `ModelProvider` 或 typed configuration error。
-- `tests/provider-transport.test.ts`：mock transport 的 replay、abort、error 测试。
 - `tests/agent-profile.test.ts`：`AgentProfile` 必须显式引用 system prompt，默认 prompts 覆盖内置 roles。
 - `tests/provider-resolver.test.ts`：role mapping、默认 role fallback、model fallback、缺失 provider 错误。
 
@@ -386,7 +401,6 @@ Lesson 1 的 `ModelEvent`：
 - abort 后停止输出。
 - provider error 可以被模拟。
 - agent loop 或 provider 测试不直接 new 真实 SDK client。
-- mock transport 必须通过正式 `ModelProvider` path 驱动，不建立平行测试入口。
 - `AgentProfile` fixture 必须显式引用 system prompt。
 - 默认 agent role prompts 覆盖 `coder`、`oracle`、`reviewer`、`explorer`。
 - 默认 role prompts 包含 Amp 映射后的 shared sections，并保留 role-specific boundaries。
@@ -396,9 +410,9 @@ Lesson 1 的 `ModelEvent`：
 - provider 缺失或不可用时返回 typed configuration error，不让 agent loop crash。
 - fallback 结果写入 event 或 resolver result，方便 UI 展示实际使用的 provider/model。
 
-### Lesson 1.3 ToolRegistry and first mock tool
+### Lesson 1.3 ToolRegistry and first tool
 
-状态：planned
+状态：learning complete in `lesson1-agent-loop-basic-debug`
 
 目标：
 
@@ -420,7 +434,7 @@ Lesson 1 的 `ModelEvent`：
 
 ### Lesson 1.4 HookRunner MVP
 
-状态：planned
+状态：not implemented
 
 目标：
 
@@ -453,7 +467,7 @@ Lesson 1 的 `ModelEvent`：
 
 ### Lesson 1.5 Context, prompt, memory, session, and permission stubs
 
-状态：planned
+状态：not implemented as capability
 
 目标：
 
@@ -490,7 +504,7 @@ Lesson 1 的 `ModelEvent`：
 
 ### Lesson 1.6 AgentLoop MVP state machine and stop reasons
 
-状态：planned
+状态：partial, basic call path exists in `lesson1-agent-loop-basic-debug`
 
 目标：
 
@@ -542,7 +556,7 @@ Agent loop event log 应该包含：
 
 ### Lesson 1.7 CLI demo, verification, teaching notes, and implementation breakdown
 
-状态：planned
+状态：partial, debug demo exists in `lesson1-agent-loop-basic-debug`
 
 目标：
 
@@ -586,13 +600,23 @@ bun run demo
 
 ## 风险和取舍
 
-- Mock transport 会让第一课稳定，但仍无法覆盖真实 provider streaming 的所有细节。后续 Lesson 2 补真实 adapter。
+- demo 依赖真实 AI API 平台，能观察 token usage，但本地离线环境不能完整复现 demo。
 - `echo_tool` 很简单，但适合验证 loop。真实 file tool 后续补。
 - In-memory session store 不能恢复进程重启，但接口要为 JSONL / SQLite 留好位置。
 - HookRunner 先做内部 typed hooks，避免用户脚本带来的安全和兼容问题。
 - Context token estimate 先粗略估算，后续 provider adapter 再提供更准确实现。
 
-## 完成标准
+## 当前 tag 完成标准
+
+- Lesson 1.1 到 Lesson 1.3 的学习内容可以根据 tag 查看。
+- `bun run demo` 可以通过真实 OpenAI-compatible provider 跑通最小 agent loop，并观察 token usage。
+- DEBUG 日志可以展示 provider request、provider event、tool result、stop reason。
+- 单次 provider call 的 `durationMs`、`eventCount`、`stopReason`、`usage` 可以看到。
+- `bun run check`、`bun run typecheck`、`bun test` 通过。
+
+后续每次增强 Lesson 1 的能力，都必须在本计划中补充“小节 -> tag”的对应关系，让学习者能按 tag 逐步查看实现过程。
+
+## Lesson 1 完整完成标准
 
 - 所有小节状态更新为 done。
 - `bun run typecheck` 通过。

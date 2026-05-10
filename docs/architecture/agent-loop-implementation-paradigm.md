@@ -238,7 +238,7 @@ type HookResult =
 
 ## Provider 只通过 ModelProvider 进入 loop
 
-agent loop 不能直接调用具体 SDK、transport 或 mock。
+agent loop 不能直接调用具体 SDK，学习和 demo 路径也不使用替代真实模型调用的 provider。
 
 允许：
 
@@ -251,10 +251,9 @@ deps.provider.createMessage(request, signal)
 ```ts
 deps.openai.responses.create(...)
 deps.anthropic.messages.create(...)
-deps.mockTransport.send(...)
 ```
 
-测试用 `MockProviderTransport` 必须挂在 `ModelProvider` 内部的请求边界，不作为独立 provider 分支暴露给 agent loop。
+测试如果需要本地 test double，只能放在测试文件内部，不能进入 runtime source、demo 或 lesson 学习路径。
 
 ## Tools 通过 ToolRegistry 执行
 
