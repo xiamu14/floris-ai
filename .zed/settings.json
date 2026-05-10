@@ -1,0 +1,39 @@
+{
+  "lsp": {
+    "biome": {
+      "settings": {
+        "config_path": "packages/agent-runtime/biome.jsonc"
+      }
+    }
+  },
+  "languages": {
+    "JavaScript": {
+      "formatter": {
+        "language_server": {
+          "name": "biome"
+        }
+      }
+    },
+    "JSON": {
+      "formatter": {
+        "language_server": {
+          "name": "biome"
+        }
+      }
+    },
+    "JSONC": {
+      "formatter": {
+        "language_server": {
+          "name": "biome"
+        }
+      }
+    },
+    "TypeScript": {
+      "formatter": {
+        "language_server": {
+          "name": "biome"
+        }
+      }
+    }
+  }
+}
