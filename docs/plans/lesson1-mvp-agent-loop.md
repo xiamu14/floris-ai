@@ -4,7 +4,7 @@
 
 当前状态：in progress
 
-当前代码 tag 覆盖 Lesson 1.1 到 Lesson 1.3 的学习目标，并额外提供最小 agent-loop debug demo。它不代表 Lesson 1.4 之后的 session、context window、hooks、permission、memory 等能力已经完成。
+当前代码 tag 覆盖 Lesson 1.1 到 Lesson 1.3 的学习目标，并额外提供最小 agent-loop demo 和 MLflow trace。它不代表 Lesson 1.4 之后的 session、context window、permission、memory、Web UI、hooks 等能力已经完成。
 
 当前学习 tag：
 
@@ -19,10 +19,10 @@ lesson1-agent-loop-basic-debug
 | Lesson 1.1 Runtime skeleton | `lesson1-agent-loop-basic-debug` | learning complete |
 | Lesson 1.2 ModelProvider boundary | `lesson1-agent-loop-basic-debug` | learning complete |
 | Lesson 1.3 ToolRegistry and first tool | `lesson1-agent-loop-basic-debug` | learning complete |
-| Lesson 1.4 HookRunner MVP | 后续 tag | not implemented |
-| Lesson 1.5 Context / memory / session / permission | 后续 tag | not implemented as capability |
-| Lesson 1.6 AgentLoop state machine | 后续 tag | partial, only basic call path used by demo |
-| Lesson 1.7 CLI demo and docs | 后续 tag | partial, only debug demo exists |
+| Lesson 1.4 Context / memory / session / permission | 后续 tag | not implemented as capability |
+| Lesson 1.5 AgentLoop state machine | 后续 tag | partial, only basic call path used by demo |
+| Lesson 1.6 Stream Rendering Web UI | 后续 tag | not implemented |
+| Lesson 1.7 HookRunner MVP | 后续 tag | not implemented |
 
 本计划对应教学规划：
 
@@ -60,13 +60,15 @@ Lesson 1 完整计划范围：
 - Memory store MVP。
 - In-memory session store。
 - No-op permission gate 或接口占位。
-- CLI demo。
+- Stream rendering Web UI。
 - 单元测试。
 
-当前 tag 已实现的 Lesson 1.1 到 Lesson 1.3 学习内容：
+当前已实现的 Lesson 1.1 到 Lesson 1.3 学习内容：
 
 - `ModelProvider` path、OpenAI-compatible provider adapter。
 - `echo_tool` 和 tool result 回填。
+- workspace tools MVP：`list_files`、`read_file`、`search_files`。
+- runtime tools MVP：`git_status`、`http_request`、`run_command`。
 - MIMO config、env API key 读取、role/provider/model resolver。
 - runtime package、类型目录、测试、check、demo 脚本。
 
@@ -75,14 +77,14 @@ Lesson 1 完整计划范围：
 - `AgentLoop.runTurn()` 的基本调用路径。
 - demo 默认写入 MLflow trace，用于观察 provider request、provider event、tool result、duration 和 token usage。
 
-当前 tag 未实现的 Lesson 1 能力：
+当前未实现的 Lesson 1 能力：
 
 - HookRunner pipeline。
 - Context window / Context Inspector。
 - session persistence / branch tree。
 - MemoryStore。
 - PermissionGate。
-- file / shell / git tools。
+- `apply_patch`、`git_diff`、long-running command tools、task tools。
 
 Lesson 1 完整计划不实现：
 
@@ -438,23 +440,24 @@ Lesson 1 的 `ModelEvent`：
 1. Tool 自身过滤：每个 tool 按自己的领域做输出优化，例如 `git_diff` 输出 file stats 和 scoped hunks，`http_request` 按 content type 摘要，`run_command` 按 test/lint/build/git 等 command kind 提取重点。
 2. Runtime 过滤：`PostToolUse` 记录 raw output、optimized output、token metrics 和省略原因；`BeforeContextBuild` / context budget guard 再决定哪些 tool result 能进入下一轮 model context。
 
-下一批建议实现清单：
+当前 tool 进度：
 
-| Tool | 用途 | 实现方向 |
+| Tool | 用途 | 进度 |
 | --- | --- | --- |
-| `list_files` | 列 workspace 结构 | 自定义，配合 ignore / glob 库 |
-| `read_file` | 读取文件片段 | 自定义，内置 offset / limit / bytes cap |
-| `search_files` | 搜索内容 | 优先 `rg --json`，fallback 自定义扫描 |
-| `run_command` | 执行受控命令 | 自定义 `spawn`、process store、output optimizer |
-| `get_command_status` | 查询长命令状态 | 自定义 process store |
-| `get_command_output` | 分页读取长输出 | 自定义 artifact reader |
-| `stop_command` | 停止长命令 | 自定义 process manager |
-| `apply_patch` | patch 修改文件 | 写入策略自定义，parser 可评估三方库 |
-| `git_status` | 查看 git 状态 | 自定义 porcelain parser |
-| `git_diff` | 查看 diff 摘要和 scoped diff | git CLI + diff parser / 自定义 filter |
-| `list_tasks` | 发现 package scripts / Makefile / justfile | 自定义 parser |
-| `run_task` | 跑 test / lint / build / dev | 基于 `run_command` |
-| `http_request` | smoke test 本地服务或 API | 自定义 fetch + content-type summary |
+| `echo_tool` | 教学 echo，验证 tool call / result 回填 | 已实现，教学工具 |
+| `list_files` | 列 workspace 结构 | 已实现 MVP |
+| `read_file` | 读取文件片段 | 已实现 MVP，支持源码 excerpt budget guard |
+| `search_files` | 搜索内容 | 已实现 MVP |
+| `run_command` | 执行受控短命令 | 已实现 MVP，长命令生命周期未完成 |
+| `git_status` | 查看 git 状态 | 已实现 MVP |
+| `http_request` | smoke test 本地服务或 API | 已实现 MVP |
+| `get_command_status` | 查询长命令状态 | 未实现 |
+| `get_command_output` | 分页读取长输出 | 未实现 |
+| `stop_command` | 停止长命令 | 未实现 |
+| `apply_patch` | patch 修改文件 | 未实现 |
+| `git_diff` | 查看 diff 摘要和 scoped diff | 未实现 |
+| `list_tasks` | 发现 package scripts / Makefile / justfile | 未实现 |
+| `run_task` | 跑 test / lint / build / dev | 未实现 |
 
 自定义和三方库取舍：
 
@@ -573,40 +576,7 @@ benchmark 关系：
 - 多轮 tool call 的 trace span parent/child 关系后续用 recorder 断言。
 - MLflow exporter 可以用 mock trace recorder 测试，不要求单元测试启动 MLflow server。
 
-### Lesson 1.4 HookRunner MVP
-
-状态：not implemented
-
-目标：
-
-- 定义内部 typed hook event。
-- 实现 `HookRunner`。
-- 支持同步或异步 hook。
-
-第一版 hooks：
-
-- `SessionStart`
-- `BeforeContextBuild`
-- `AfterContextBuild`
-- `PreToolUse`
-- `PostToolUse`
-- `Stop`
-- `UserInterrupt`
-
-设计要求：
-
-- hook 调用顺序稳定。
-- hook result 写入 event log 或返回给 caller。
-- `PreToolUse` 可以 block。
-- `Stop` 可以返回 `continue`。
-
-测试：
-
-- 调用顺序。
-- `PreToolUse` block tool。
-- `Stop` 阻止停止。
-
-### Lesson 1.5 Context, prompt, memory, session, and permission stubs
+### Lesson 1.4 Context, prompt, memory, session, and permission stubs
 
 状态：not implemented as capability
 
@@ -643,7 +613,7 @@ benchmark 关系：
 - event 按顺序写入 session store。
 - no-op permission gate 不阻止默认 demo tool。
 
-### Lesson 1.6 AgentLoop MVP state machine and stop reasons
+### Lesson 1.5 AgentLoop MVP state machine and stop reasons
 
 状态：partial, basic call path exists in `lesson1-agent-loop-basic-debug`
 
@@ -695,28 +665,71 @@ Agent loop event log 应该包含：
 - abort。
 - `Stop` hook 阻止停止。
 
-### Lesson 1.7 CLI demo, verification, teaching notes, and implementation breakdown
+### Lesson 1.6 Stream Rendering Web UI
 
-状态：partial, debug demo exists in `lesson1-agent-loop-basic-debug`
+状态：not implemented
 
 目标：
 
-- 提供 CLI demo。
+- 提供 stream rendering Web UI，用流式方式渲染 agent run。
+- 使用 SSE 作为第一版 transport，但产品目标是增量渲染 chat / timeline，而不是只展示原始 event log。
 - 同步教学笔记和实现拆解。
-- 把前面 6 个小节跑成一条完整路径。
+- 把前面 5 个小节跑成一条完整用户可见路径。
 
-Demo 验收输出应该包含：
+Web UI 验收输出应该包含可增量渲染的内容：
 
 - user message。
-- context sections。
-- model requested tool。
-- tool result。
-- final answer。
-- stop reason。
+- assistant text delta / final assistant message。
+- tool call started / finished。
+- tool result summary。
+- context build summary。
+- stop reason 和 error state。
+- MLflow trace id 或 trace link。
+
+第一版 stream rendering 边界：
+
+- 只做本地开发 UI，不做生产 macOS app。
+- 使用一个轻量 HTTP server 提供页面和 `/runs` stream endpoint。
+- transport 第一版使用 SSE；事件格式要保持和未来 macOS app bridge 可复用。
+- 页面包含输入框、Run 按钮、assistant message 流式渲染、tool timeline、final answer、stop reason、trace link。
+- runtime 仍然复用 `packages/agent-runtime`，Web UI 不实现 agent loop。
+- stream event 使用 agent event / trace summary，不传 secret 原文。
+- CLI demo 可以保留为 smoke script，但不再作为 Lesson 1.6 的主要交付。
+
+stream event 最小 contract：
+
+```text
+run.started
+message.delta
+message.completed
+tool.started
+tool.completed
+context.built
+run.completed
+run.failed
+```
+
+设计重点：
+
+- UI 不能等整个 run 完成后一次性渲染。
+- assistant message 要按 delta 追加。
+- tool call 要先出现 pending 状态，再更新为 success / error。
+- final answer 由 message deltas 组成，不再只依赖最后的 JSON summary。
+- MLflow trace 仍作为深度观察入口，Web UI 只展示用户需要的运行过程。
+
+为什么从 CLI 改为 stream Web UI：
+
+- 主流 AI agent 产品的核心体验是可观察的 chat / run timeline，而不是 terminal output。
+- stream rendering 更接近真实用户体验：用户能看到 agent 正在思考、调用 tool、拿到结果和继续生成。
+- SSE 更贴近后续 macOS app bridge 的 event protocol，但不是唯一目标；核心是稳定的 stream event contract。
+- Web UI 能更早暴露 partial message、tool pending state、stop reason、trace link 和用户体验问题。
 
 测试：
 
-- `bun run demo` 成功退出并输出 `assistant_done`。
+- Web UI server 可以启动。
+- stream endpoint 可以输出 `run.started`、`message.delta`、`tool.started`、`tool.completed`、`run.completed`。
+- 前端 reducer 可以把 stream events 合成为 assistant message 和 tool timeline。
+- scripted provider 下能跑到 `assistant_done`。
 - `bun run typecheck` 通过。
 - `bun run test` 通过。
 - `bun run check` 通过。
@@ -726,6 +739,42 @@ Demo 验收输出应该包含：
 - 更新 `docs/teaching/lesson1/notes.md`。
 - 更新 `docs/teaching/lesson1/implementation-breakdown.md`。
 - 在本计划中把完成的小节状态改成 done。
+
+### Lesson 1.7 HookRunner MVP
+
+状态：not implemented
+
+目标：
+
+- 定义内部 typed hook event。
+- 实现 `HookRunner`。
+- 支持同步或异步 hook。
+- 把 hook 接入 AgentLoop、tool execution、context build 和 stop path。
+
+第一版 hooks：
+
+- `SessionStart`
+- `BeforeContextBuild`
+- `AfterContextBuild`
+- `PreToolUse`
+- `PostToolUse`
+- `Stop`
+- `UserInterrupt`
+
+设计要求：
+
+- hook 调用顺序稳定。
+- hook result 写入 event log 或返回给 caller。
+- `PreToolUse` 可以 block。
+- `Stop` 可以返回 `continue`。
+- Stream Web UI 能看到 hook block 或 hook warning 的结构化事件。
+
+测试：
+
+- 调用顺序。
+- `PreToolUse` block tool。
+- `Stop` 阻止停止。
+- hook event 能进入 session event / stream event。
 
 ## 运行命令
 
@@ -742,15 +791,16 @@ bun run demo
 ## 风险和取舍
 
 - demo 依赖真实 AI API 平台，能观察 token usage，但本地离线环境不能完整复现 demo。
-- `echo_tool` 很简单，但适合验证 loop。真实 file tool 后续补。
+- 当前 tools 是 MVP：`read_file`、`list_files`、`search_files`、`git_status`、`http_request`、`run_command` 已能支持基本观察和 demo，但权限、长命令生命周期、patch 写入和 diff 仍要后续补。
 - In-memory session store 不能恢复进程重启，但接口要为 JSONL / SQLite 留好位置。
-- HookRunner 先做内部 typed hooks，避免用户脚本带来的安全和兼容问题。
+- Web UI 先做 stream rendering，不做完整前端产品；它服务 Lesson 1 的可观察 agent run。
+- HookRunner 移到 Lesson 1 最后，先让 agent run、context、session、permission stub 和 stream event 路径稳定，再补内部 lifecycle extension。
 - Context token estimate 先粗略估算，后续 provider adapter 再提供更准确实现。
 
 ## 当前 tag 完成标准
 
 - Lesson 1.1 到 Lesson 1.3 的学习内容可以根据 tag 查看。
-- `bun run demo` 可以通过真实 OpenAI-compatible provider 跑通最小 agent loop，并观察 token usage。
+- Stream Web UI 可以增量渲染最小 agent run，并观察 assistant delta、tool call、stop reason 和 trace link。
 - MLflow trace 可以展示 provider request、provider event、tool result、stop reason。
 - 单次 provider call 的 duration、event count、stop reason 和 usage 进入 MLflow span attributes。
 - `bun run check`、`bun run typecheck`、`bun test` 通过。

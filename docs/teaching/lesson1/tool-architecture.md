@@ -2,7 +2,7 @@
 
 ## 目标
 
-Lesson 1.3 当前只实现了 `echo_tool`，用于教学 tool call 到 tool result 的回填路径。下一步要把它升级成真正支持 general agent 和 coding agent 的 tool layer。
+Lesson 1.3 起步时只实现了 `echo_tool`，用于教学 tool call 到 tool result 的回填路径。当前项目已经继续补上 workspace 读取、搜索、git status、HTTP smoke test 和受控 command 的 MVP tool。下一步要把这些 MVP 工具继续升级成真正支持 general agent 和 coding agent 的完整 tool layer。
 
 这里的目标不是堆一组能跑的工具，而是建立一套之后所有工具都遵守的 contract：
 
@@ -683,21 +683,52 @@ run list
 
 ### 第一批通用 tool
 
-| Tool | 目标 | 默认 agent | Token 策略 |
-| --- | --- | --- | --- |
-| `list_files` | 列目录和 workspace 结构 | general + coding | tree compression、depth、limit、ignore rules |
-| `read_file` | 读取文本文件片段 | general + coding | offset/limit、bytes cap、line cap |
-| `search_files` | 搜索内容 | general + coding | group by file、match cap、snippet cap、rawRef |
-| `run_command` | 执行受控命令 | coding | command classifier、failure focus、ring buffer、rawRef |
-| `get_command_status` | 查询长命令状态 | coding | 只返回状态摘要和最新输出窗口 |
-| `get_command_output` | 分页读取长命令输出 | coding | page/tail/error-section 读取，不默认全量 |
-| `stop_command` | 停止长命令 | coding | 返回状态变化摘要 |
-| `apply_patch` | 通过 patch 修改文件 | coding | patch stats、changed files、raw patch artifact |
-| `git_status` | 查看 git 工作区状态 | general + coding | porcelain parser、文件数量和清单上限 |
-| `git_diff` | 查看改动 diff | general + coding | numstat + scoped diff，默认摘要 |
-| `list_tasks` | 发现 package scripts / Makefile / justfile | general + coding | 只返回任务名、来源、推荐入口 |
-| `run_task` | 运行 test/lint/build/dev 等任务 | coding | 基于 `run_command`，按 task kind 过滤 |
-| `http_request` | smoke test 本地服务或 API | coding + automation | content-type aware summary、body cap、redaction |
+| Tool | 目标 | 默认 agent | Token 策略 | 进度 |
+| --- | --- | --- | --- | --- |
+| `echo_tool` | 教学用 echo，验证 tool call / result 回填 | demo | structure only | 已实现，教学工具 |
+| `list_files` | 列目录和 workspace 结构 | general + coding | tree compression、depth、limit、ignore rules | 已实现 MVP |
+| `read_file` | 读取文本文件片段 | general + coding | offset/limit、bytes cap、line cap | 已实现 MVP，已支持源码 excerpt budget guard |
+| `search_files` | 搜索内容 | general + coding | group by file、match cap、snippet cap、rawRef | 已实现 MVP |
+| `run_command` | 执行受控命令 | coding | command classifier、failure focus、ring buffer、rawRef | 已实现 MVP，同步短命令；长命令生命周期未完成 |
+| `get_command_status` | 查询长命令状态 | coding | 只返回状态摘要和最新输出窗口 | 未实现 |
+| `get_command_output` | 分页读取长命令输出 | coding | page/tail/error-section 读取，不默认全量 | 未实现 |
+| `stop_command` | 停止长命令 | coding | 返回状态变化摘要 | 未实现 |
+| `apply_patch` | 通过 patch 修改文件 | coding | patch stats、changed files、raw patch artifact | 未实现 |
+| `git_status` | 查看 git 工作区状态 | general + coding | porcelain parser、文件数量和清单上限 | 已实现 MVP |
+| `git_diff` | 查看改动 diff | general + coding | numstat + scoped diff，默认摘要 | 未实现 |
+| `list_tasks` | 发现 package scripts / Makefile / justfile | general + coding | 只返回任务名、来源、推荐入口 | 未实现 |
+| `run_task` | 运行 test/lint/build/dev 等任务 | coding | 基于 `run_command`，按 task kind 过滤 | 未实现 |
+| `http_request` | smoke test 本地服务或 API | coding + automation | content-type aware summary、body cap、redaction | 已实现 MVP |
+
+### 当前已实现 tool 记录
+
+当前已进入 `packages/agent-runtime/src/tools/tool.ts` 的 registry：
+
+- `echo_tool`：教学工具，用于验证最小 tool call 闭环。
+- `list_files`：读取 workspace 文件结构，支持 `path`、`maxDepth`、`limit`，并应用默认 ignore rules。
+- `read_file`：读取 UTF-8 文本文件，支持 `startLine`、`maxLines`、`maxBytes`；raw output 进入 artifact store，model context 使用 bounded excerpt。
+- `search_files`：搜索 workspace 文本内容，按文件分组，限制 match 和 snippet，适合定位 symbol / API entry。
+- `git_status`：读取 git 工作区状态，输出 branch / changed files 摘要和有限文件清单。
+- `http_request`：执行 HTTP smoke test，按 content type 做 body cap 和结构化摘要。
+- `run_command`：执行受控短命令，内置 command policy、timeout、stdout/stderr 摘要和 raw artifact。
+
+当前这些 tool 已统一返回 `ToolResultEnvelope`，包含：
+
+- `summary`
+- `display`
+- `context`
+- `artifacts`
+- `metrics`
+- `omitted`
+- `error`
+
+当前限制：
+
+- `run_command` 还是同步短命令执行，没有 long-running process store。
+- 还没有 `get_command_status`、`get_command_output`、`stop_command`。
+- 还没有 `apply_patch`、`git_diff`、`list_tasks`、`run_task`。
+- permission gate 仍是后续能力；当前 tool 内部只做最小 path / command safety。
+- `read_file` 已修复 summary-only 过度压缩问题，但后续仍需要更完整的 chunk / range UX。
 
 ### 暂不进入 Lesson 1.3 的 tool
 
