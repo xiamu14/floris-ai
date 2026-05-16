@@ -22,6 +22,22 @@ import type {
   TokenUsage,
 } from "../types/runtime.type";
 import type { ToolResult } from "../types/tool.type";
+import type { TraceRunHandle } from "../types/trace.type";
+import {
+  finishContextTraceSpan,
+  finishModelTraceSpan,
+  finishToolTraceSpan,
+  finishTraceRun,
+  recordTraceProviderEvent,
+  startAgentTraceRun,
+  startContextTraceSpan,
+  startModelTraceSpan,
+  startToolTraceSpan,
+} from "./agent-loop-trace";
+
+const DEFAULT_CODE_AGENT_MAX_OUTPUT_TOKENS = 4096;
+const DEFAULT_TOOL_CONTEXT_MAX_TOKENS = 1600;
+const FINAL_SYNTHESIS_MAX_OUTPUT_TOKENS = 8192;
 
 export class AgentLoop {
   private readonly deps: AgentLoopDeps;
@@ -48,8 +64,11 @@ async function runAgentTurn(
   ];
   const usage = createEmptyUsage();
   const frameworkContext = createAgentRunFrameworkContext(deps, input);
+  const traceRun = startAgentTraceRun(deps, input, crypto.randomUUID());
   const maxIterations =
     input.options?.maxIterations ?? input.profile.stopPolicy.maxIterations;
+  const shouldForceSynthesis =
+    input.options?.forceSynthesisOnMaxIterations ?? true;
   let finalMessage = "";
 
   await appendEvent(deps, events, input, "user_message", {
@@ -65,83 +84,317 @@ async function runAgentTurn(
         stopReason: "user_interrupted",
       });
 
-      return toResult(input, events, usage, "user_interrupted", finalMessage);
-    }
-
-    const context = await deps.contextBuilder.build({
-      profile: input.profile,
-      threadId: input.threadId,
-      branchId: input.branchId,
-      messages,
-    });
-    const request: ModelRequest = {
-      model: input.profile.model,
-      system: context.system,
-      messages: context.messages,
-      tools: deps.toolRegistry.listDefinitions(input.profile.allowedTools),
-    };
-
-    await appendEvent(deps, events, input, "context_built", {
-      tokenEstimate: context.tokenEstimate,
-    });
-    await appendEvent(deps, events, input, "model_request_started", {
-      iteration,
-      model: input.profile.model,
-    });
-
-    const providerResult = await consumeProviderEvents(
-      deps,
-      input,
-      request,
-      events,
-      usage,
-      iteration
-    );
-
-    finalMessage += providerResult.text;
-
-    if (providerResult.stopReason === "provider_error") {
-      return toResult(input, events, usage, "provider_error", finalMessage);
-    }
-
-    if (providerResult.toolCalls.length === 0) {
-      await appendEvent(deps, events, input, "stop", {
-        stopReason: "assistant_done",
-      });
-
-      return toResult(input, events, usage, "assistant_done", finalMessage);
-    }
-
-    messages.push(createAssistantToolMessage(providerResult));
-
-    for (const toolCall of providerResult.toolCalls) {
-      const toolResult = await executeToolCall(
+      return toResult(
         deps,
         input,
         events,
-        frameworkContext,
-        toolCall
+        usage,
+        "user_interrupted",
+        finalMessage,
+        traceRun
       );
+    }
 
-      messages.push({
-        role: "tool",
-        content: toolResultToContent(toolResult),
-        toolCallId: toolCall.id,
+    const providerResult = await requestModelForIteration(
+      deps,
+      input,
+      events,
+      usage,
+      messages,
+      traceRun,
+      iteration,
+      deps.toolRegistry.listDefinitions(input.profile.allowedTools)
+    );
+
+    finalMessage += providerResult.text;
+    const stopReason = getProviderStopReason(providerResult);
+
+    if (stopReason) {
+      await appendEvent(deps, events, input, "stop", {
+        stopReason,
       });
 
-      if (toolResult.ok || toolResult.error.recoverable) {
-        continue;
-      }
-
-      return toResult(input, events, usage, "tool_error", finalMessage);
+      return toResult(
+        deps,
+        input,
+        events,
+        usage,
+        stopReason,
+        finalMessage,
+        traceRun
+      );
     }
+
+    messages.push(createAssistantToolMessage(providerResult));
+    const toolsOk = await executeToolCallsForIteration(
+      deps,
+      input,
+      events,
+      frameworkContext,
+      messages,
+      providerResult.toolCalls,
+      traceRun,
+      iteration
+    );
+
+    if (!toolsOk) {
+      return toResult(
+        deps,
+        input,
+        events,
+        usage,
+        "tool_error",
+        finalMessage,
+        traceRun
+      );
+    }
+  }
+
+  if (shouldForceSynthesis && messages.length > 1 && !input.signal?.aborted) {
+    return forceSynthesisAfterMaxIterations(
+      deps,
+      input,
+      events,
+      usage,
+      messages,
+      traceRun,
+      maxIterations,
+      finalMessage
+    );
   }
 
   await appendEvent(deps, events, input, "stop", {
     stopReason: "max_iterations",
   });
 
-  return toResult(input, events, usage, "max_iterations", finalMessage);
+  return toResult(
+    deps,
+    input,
+    events,
+    usage,
+    "max_iterations",
+    finalMessage,
+    traceRun
+  );
+}
+
+function getProviderStopReason(providerResult: {
+  stopReason: ModelStopReason;
+  toolCalls: ModelToolCall[];
+}): RunTurnResult["stopReason"] | undefined {
+  if (providerResult.stopReason === "provider_error") {
+    return "provider_error";
+  }
+
+  if (
+    providerResult.stopReason === "max_tokens" &&
+    providerResult.toolCalls.length === 0
+  ) {
+    return "provider_max_tokens";
+  }
+
+  if (providerResult.toolCalls.length === 0) {
+    return "assistant_done";
+  }
+
+  return undefined;
+}
+
+async function requestModelForIteration(
+  deps: AgentLoopDeps,
+  input: RunTurnInput,
+  events: AgentEvent[],
+  usage: TokenUsage,
+  messages: ModelMessage[],
+  traceRun: TraceRunHandle | undefined,
+  iteration: number,
+  tools: ModelRequest["tools"]
+) {
+  const contextSpan = startContextTraceSpan(traceRun, iteration);
+  const context = await deps.contextBuilder.build({
+    profile: input.profile,
+    threadId: input.threadId,
+    branchId: input.branchId,
+    messages,
+  });
+  finishContextTraceSpan(contextSpan, context);
+  const request: ModelRequest = {
+    model: input.profile.model,
+    system: context.system,
+    messages: context.messages,
+    tools,
+    maxOutputTokens: DEFAULT_CODE_AGENT_MAX_OUTPUT_TOKENS,
+  };
+
+  await appendEvent(deps, events, input, "context_built", {
+    tokenEstimate: context.tokenEstimate,
+  });
+  await appendEvent(deps, events, input, "model_request_started", {
+    iteration,
+    model: input.profile.model,
+    ...(tools.length === 0 ? { toolScope: "none" } : {}),
+  });
+
+  const modelSpan = startModelTraceSpan(traceRun, iteration, request);
+  const providerResult = await consumeProviderEvents(
+    deps,
+    input,
+    request,
+    events,
+    usage,
+    iteration,
+    traceRun,
+    modelSpan?.id
+  );
+  finishModelTraceSpan(modelSpan, providerResult);
+
+  return providerResult;
+}
+
+async function executeToolCallsForIteration(
+  deps: AgentLoopDeps,
+  input: RunTurnInput,
+  events: AgentEvent[],
+  frameworkContext: FrameworkContext,
+  messages: ModelMessage[],
+  toolCalls: ModelToolCall[],
+  traceRun: TraceRunHandle | undefined,
+  iteration: number
+): Promise<boolean> {
+  for (const toolCall of toolCalls) {
+    const toolResult = await executeToolCall(
+      deps,
+      input,
+      events,
+      frameworkContext,
+      toolCall,
+      traceRun,
+      iteration
+    );
+
+    messages.push({
+      role: "tool",
+      content: toolResultToContent(toolResult),
+      toolCallId: toolCall.id,
+    });
+
+    if (!(toolResult.ok || toolResult.error.recoverable)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+async function forceSynthesisAfterMaxIterations(
+  deps: AgentLoopDeps,
+  input: RunTurnInput,
+  events: AgentEvent[],
+  usage: TokenUsage,
+  messages: ModelMessage[],
+  traceRun: TraceRunHandle | undefined,
+  iteration: number,
+  previousFinalMessage: string
+): Promise<RunTurnResult> {
+  const synthesisMessages = [
+    ...messages,
+    {
+      role: "user" as const,
+      content: [
+        "Tool budget is exhausted.",
+        "Do not call more tools.",
+        "Use only the observations already in this conversation to produce the best concise final answer.",
+        "If some details are uncertain, state the uncertainty directly.",
+      ].join("\n"),
+    },
+  ];
+  const contextSpan = startContextTraceSpan(traceRun, iteration);
+  const context = await deps.contextBuilder.build({
+    profile: input.profile,
+    threadId: input.threadId,
+    branchId: input.branchId,
+    messages: synthesisMessages,
+  });
+  finishContextTraceSpan(contextSpan, context);
+  const request: ModelRequest = {
+    model: input.profile.model,
+    system: context.system,
+    messages: context.messages,
+    tools: [],
+    maxOutputTokens: FINAL_SYNTHESIS_MAX_OUTPUT_TOKENS,
+  };
+
+  await appendEvent(deps, events, input, "forced_synthesis_started", {
+    reason: "max_iterations",
+    iteration,
+  });
+  await appendEvent(deps, events, input, "context_built", {
+    tokenEstimate: context.tokenEstimate,
+  });
+  await appendEvent(deps, events, input, "model_request_started", {
+    iteration,
+    model: input.profile.model,
+    toolScope: "none",
+  });
+
+  const modelSpan = startModelTraceSpan(traceRun, iteration, request);
+  const providerResult = await consumeProviderEvents(
+    deps,
+    input,
+    request,
+    events,
+    usage,
+    iteration,
+    traceRun,
+    modelSpan?.id
+  );
+  finishModelTraceSpan(modelSpan, providerResult);
+
+  const finalMessage = previousFinalMessage + providerResult.text;
+
+  if (providerResult.stopReason === "provider_error") {
+    return toResult(
+      deps,
+      input,
+      events,
+      usage,
+      "provider_error",
+      finalMessage,
+      traceRun
+    );
+  }
+
+  if (providerResult.stopReason === "max_tokens") {
+    await appendEvent(deps, events, input, "stop", {
+      stopReason: "provider_max_tokens",
+      phase: "forced_synthesis",
+    });
+
+    return toResult(
+      deps,
+      input,
+      events,
+      usage,
+      "provider_max_tokens",
+      finalMessage,
+      traceRun
+    );
+  }
+
+  await appendEvent(deps, events, input, "stop", {
+    stopReason: "assistant_done",
+    phase: "forced_synthesis",
+  });
+
+  return toResult(
+    deps,
+    input,
+    events,
+    usage,
+    "assistant_done",
+    finalMessage,
+    traceRun
+  );
 }
 
 function createAgentRunFrameworkContext(
@@ -188,20 +441,76 @@ function createAssistantToolMessage(providerResult: {
   };
 }
 
+function consumeProviderEvent(
+  event: ModelEvent,
+  toolCalls: ModelToolCall[],
+  usage: TokenUsage,
+  requestUsage: TokenUsage,
+  state: {
+    reasoningContent: string | undefined;
+    stopReason: ModelStopReason;
+    text: string;
+  }
+): {
+  reasoningContent: string | undefined;
+  stopReason: ModelStopReason;
+  text: string;
+} {
+  switch (event.type) {
+    case "text_delta":
+      return {
+        ...state,
+        text: state.text + event.text,
+      };
+    case "tool_call_done":
+      toolCalls.push(event.toolCall);
+      return {
+        ...state,
+        ...(event.reasoningContent
+          ? { reasoningContent: event.reasoningContent }
+          : {}),
+      };
+    case "usage":
+      usage.inputTokens += event.usage.inputTokens;
+      usage.outputTokens += event.usage.outputTokens;
+      usage.totalTokens += event.usage.totalTokens;
+      requestUsage.inputTokens += event.usage.inputTokens;
+      requestUsage.outputTokens += event.usage.outputTokens;
+      requestUsage.totalTokens += event.usage.totalTokens;
+      return state;
+    case "done":
+      return {
+        ...state,
+        stopReason: event.stopReason,
+      };
+    case "error":
+      return {
+        ...state,
+        stopReason: "provider_error",
+      };
+    default:
+      return state;
+  }
+}
+
 async function consumeProviderEvents(
   deps: AgentLoopDeps,
   input: RunTurnInput,
   request: ModelRequest,
   events: AgentEvent[],
   usage: TokenUsage,
-  iteration: number
+  iteration: number,
+  traceRun?: TraceRunHandle,
+  traceSpanId?: string
 ): Promise<{
   text: string;
   toolCalls: ModelToolCall[];
   stopReason: ModelStopReason;
+  usage: TokenUsage;
   reasoningContent?: string;
 }> {
   const toolCalls: ModelToolCall[] = [];
+  const requestUsage = createEmptyUsage();
   let text = "";
   let reasoningContent: string | undefined;
   let stopReason: ModelStopReason = "end_turn";
@@ -210,38 +519,28 @@ async function consumeProviderEvents(
     request,
     input.signal
   )) {
+    recordTraceProviderEvent(
+      traceRun,
+      traceSpanId,
+      iteration,
+      event.type,
+      event.type === "usage" ? event.usage : undefined
+    );
     await appendProviderEvent(deps, events, input, event, iteration);
-
-    if (event.type === "text_delta") {
-      text += event.text;
-    }
-
-    if (event.type === "tool_call_done") {
-      toolCalls.push(event.toolCall);
-      if (event.reasoningContent) {
-        reasoningContent = event.reasoningContent;
-      }
-    }
-
-    if (event.type === "usage") {
-      usage.inputTokens += event.usage.inputTokens;
-      usage.outputTokens += event.usage.outputTokens;
-      usage.totalTokens += event.usage.totalTokens;
-    }
-
-    if (event.type === "done") {
-      stopReason = event.stopReason;
-    }
-
-    if (event.type === "error") {
-      stopReason = "provider_error";
-    }
+    ({ reasoningContent, stopReason, text } = consumeProviderEvent(
+      event,
+      toolCalls,
+      usage,
+      requestUsage,
+      { reasoningContent, stopReason, text }
+    ));
   }
 
   return {
     text,
     toolCalls,
     stopReason,
+    usage: requestUsage,
     ...(reasoningContent ? { reasoningContent } : {}),
   };
 }
@@ -251,8 +550,11 @@ async function executeToolCall(
   input: RunTurnInput,
   events: AgentEvent[],
   frameworkContext: FrameworkContext,
-  toolCall: ModelToolCall
+  toolCall: ModelToolCall,
+  traceRun: TraceRunHandle | undefined,
+  iteration: number
 ): Promise<ToolResult> {
+  const toolSpan = startToolTraceSpan(traceRun, iteration, toolCall);
   await appendEvent(deps, events, input, "tool_started", {
     toolCall,
   });
@@ -265,8 +567,10 @@ async function executeToolCall(
   );
   const policyResult = toolContext.resultPolicy.apply({
     result: rawResult,
-    maxContextTokens: deps.toolContextMaxTokens ?? 600,
+    maxContextTokens:
+      deps.toolContextMaxTokens ?? DEFAULT_TOOL_CONTEXT_MAX_TOKENS,
   });
+  finishToolTraceSpan(toolSpan, policyResult.result);
 
   await appendEvent(deps, events, input, "tool_finished", {
     toolCallId: toolCall.id,
@@ -335,13 +639,22 @@ function createEmptyUsage(): TokenUsage {
   };
 }
 
-function toResult(
+async function toResult(
+  deps: AgentLoopDeps,
   input: RunTurnInput,
   events: AgentEvent[],
   usage: TokenUsage,
   stopReason: RunTurnResult["stopReason"],
-  finalMessage: string
-): RunTurnResult {
+  finalMessage: string,
+  traceRun?: TraceRunHandle
+): Promise<RunTurnResult> {
+  await finishTraceRun(deps, traceRun, {
+    stopReason,
+    finalMessage,
+    usage,
+    metrics: createTraceRunMetrics(events),
+  });
+
   return {
     threadId: input.threadId,
     branchId: input.branchId,
@@ -349,5 +662,21 @@ function toResult(
     events,
     usage,
     finalMessage,
+  };
+}
+
+function createTraceRunMetrics(events: AgentEvent[]): {
+  contextBuildCount: number;
+  modelRequestCount: number;
+  toolCallCount: number;
+} {
+  return {
+    contextBuildCount: events.filter((event) => event.type === "context_built")
+      .length,
+    modelRequestCount: events.filter(
+      (event) => event.type === "model_request_started"
+    ).length,
+    toolCallCount: events.filter((event) => event.type === "tool_finished")
+      .length,
   };
 }

@@ -21,7 +21,7 @@ describe("MIMO agent config option", () => {
       providerId: "mimo",
       modelId: "mimo-v2.5-pro",
       parameters: {
-        maxCompletionTokens: 1024,
+        maxCompletionTokens: 4096,
         temperature: 1,
         topP: 0.95,
         frequencyPenalty: 0,

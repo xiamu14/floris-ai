@@ -73,7 +73,7 @@ Lesson 1 完整计划范围：
 当前 tag 额外提供的观察能力：
 
 - `AgentLoop.runTurn()` 的基本调用路径。
-- demo DEBUG 日志：provider request、provider event、单次 provider call duration 和 token usage。
+- demo 默认写入 MLflow trace，用于观察 provider request、provider event、tool result、duration 和 token usage。
 
 当前 tag 未实现的 Lesson 1 能力：
 
@@ -221,7 +221,7 @@ Lesson 1 固定为 7 个小节。README、plan、notes、implementation breakdow
 
 - `ModelProvider` 使用 Strategy。`AgentLoop` 只依赖这个接口，不关心 Anthropic、OpenAI 或本地模型。
 - 真实 provider 接入时使用 Adapter。不同 SDK 的 request、response、stop reason、tool call shape 都转成 Floris AI 内部 `ModelRequest` / `ModelEvent`。
-- DEBUG provider wrapper 使用 Decorator 思路观察真实请求。真实网络请求、日志、token usage 都围绕 provider boundary 展示。
+- MLflow trace 用于观察真实 provider 请求、tool 调用和 token usage。临时 bug 调试可以单独加局部 debug wrapper。
 - `ModelEvent` stream 使用 `AsyncIterable`。Provider 可以流式输出 `text_delta`、`tool_call_done`、`usage`、`done`、`error`，UI 和 session 后续都能逐步消费。
 - 模型返回的 tool call 按 Command 思路处理：provider 只产出 `{ id, name, input }`，执行交给 `ToolRegistry`。
 
@@ -249,7 +249,7 @@ Lesson 1 只做开发阶段 provider 配置选项，不做 desktop app 可视化
 - `MIMO_API_KEY`：必需，factory 从 env 读取。
 - `MIMO_BASE_URL`：可选，未设置时使用 MIMO 平台地址 `https://api.xiaomimimo.com/v1`。
 - 当前阶段选用模型：`mimo-v2.5-pro`。
-- 当前阶段选用参数：`maxCompletionTokens: 1024`、`temperature: 1`、`topP: 0.95`、`frequencyPenalty: 0`、`presencePenalty: 0`、`stop: null`。
+- 当前阶段选用参数：`maxCompletionTokens: 4096`、`temperature: 1`、`topP: 0.95`、`frequencyPenalty: 0`、`presencePenalty: 0`、`stop: null`。
 - `coder`、`oracle`、`reviewer`、`explorer` 在当前阶段都映射到同一个 MIMO model，避免某个 `AgentRole` 无法运行。
 
 推荐最小形状：
@@ -282,7 +282,7 @@ export default defineAgentConfig({
       providerId: "mimo",
       modelId: "mimo-v2.5-pro",
       parameters: {
-        maxCompletionTokens: 1024,
+        maxCompletionTokens: 4096,
         temperature: 1,
         topP: 0.95,
         frequencyPenalty: 0,
@@ -467,11 +467,18 @@ Lesson 1 的 `ModelEvent`：
 
 #### Lesson 1.3.x Structured Trace and Visual Observation
 
+状态：implemented with local MLflow demo
+
 目标：
 
 - 把 Agent Loop 运行过程从 console log 升级为可保存、可查询、可视化的结构化 trace。
 - 让 trace 同时服务开发调试、教学讲解、后续 Context Inspector、benchmark 失败分析。
 - 优先尝试接入 MLflow Tracing；如果 MLflow 接入成本过高或实时观察不满足需求，则实现 Floris 自己的简易 web trace flow。
+
+独立设计文档：
+
+- `docs/architecture/mlflow-tracing.md`
+- `docs/architecture/mlflow-prompt-and-agent-versioning.md`
 
 为什么放在 Lesson 1.3：
 
@@ -482,32 +489,45 @@ Lesson 1 的 `ModelEvent`：
 
 设计要求：
 
-- 新增 `trace.type.ts`，定义 `RunTrace`、`TraceSpan`、`TraceEvent`、`TraceStore`、`TraceExportTarget`。
+- 新增 `trace.type.ts`，定义 `TraceRecorder`、`TraceRunHandle`、`TraceSpanHandle`、provider event 和 run finish contract。
 - `AgentEvent` 继续作为产品/session 事件；trace 作为开发观察和 benchmark artifact，二者通过 `runId`、`threadId`、`branchId`、`toolCallId` 关联。
-- trace 第一版使用 JSONL 文件保存，默认写入 package 内部忽略目录，例如 `.floris-traces/`。
 - trace 必须记录：
   - run start / stop。
-  - context build duration 和 token estimate。
+  - context build token estimate。
   - provider request start / finish / error。
   - provider event count、stop reason、usage。
   - tool start / finish / error。
   - tool raw tokens、context tokens、reduction ratio、truncated、`rawRef`。
-  - final stop reason、total duration、total usage。
+  - final stop reason、total usage、run metrics。
 - trace 不保存 secret 原文；tool output 和 provider payload 进入 trace 前要走 redaction / summary。
-- runtime 默认不打印 trace。demo 通过显式 option 启用 trace writer 和 viewer。
+- runtime 默认不打印 agent loop 过程日志。demo 默认启用 MLflow trace，console 只输出最终 summary 和必要错误。
 
 MLflow 优先方案：
 
 - Floris 内部 trace contract 不直接依赖 MLflow SDK。
-- 新增 `MlflowTraceExporter` 或 `OtelTraceExporter` adapter，把 Floris `TraceSpan` 映射成 OpenTelemetry-compatible spans。
-- 优先使用 MLflow 的 OpenTelemetry ingest 或 JS/TS tracing 能力，把一次 agent run 展示为一个 trace：
+- 新增 `MlflowTraceRecorder` adapter，把 Floris trace 事件映射到 MLflow spans。
+- 当前不引入 OpenTelemetry 设计，直接使用 `mlflow-tracing` TypeScript SDK。
+- 使用 MLflow JS/TS tracing 能力，把一次 agent run 展示为一个 trace：
   - root span: `agent.run`
   - child span: `context.build`
   - child span: `model.request`
-  - child span: `tool.execute`
-  - child span: `tool.output_filter`
-- span attributes 使用稳定 Floris 字段，例如 `floris.run_id`、`floris.thread_id`、`floris.branch_id`、`floris.agent_id`、`floris.tool.name`、`floris.stop_reason`。
-- GenAI / model 相关字段尽量按 OpenTelemetry GenAI semantic conventions 映射。
+  - child span: `tool.<name>`
+- span attributes 使用稳定 Floris 字段，例如 `floris.run_id`、`floris.thread_id`、`floris.branch_id`、`floris.agent_id`、`floris.tool.name`、`floris.stop_reason`、`floris.usage.total_tokens`。
+- root span outputs 写入 `usage` 和 `metrics`，方便查看单次 trace 的总 token、model request 次数和 tool call 次数。
+- 单个 `model.request` span 写入本次 provider usage，方便定位是哪次请求触发高 token 消耗或 `max_tokens`。
+
+`maxIterations` 和 provider `max_tokens`：
+
+- `maxIterations` 表示 agent loop 的 tool round budget，不等于模型输出 token 上限。
+- 达到 `maxIterations` 时，默认追加一次 no-tool final synthesis request，让 agent 基于已有 observation 给出结论。
+- provider 返回 `max_tokens` 且没有 tool call 时，Agent Loop 返回 `provider_max_tokens`，避免把截断回答误认为 `assistant_done`。
+- 默认 code agent 输出上限使用通用策略，不按 demo case 特判：普通 provider request 默认 `4096`，final synthesis request 覆盖到 `8192`。
+
+tool output budget：
+
+- 默认 tool context budget 使用 `1600`，避免中等源码文件被压成过短 summary。
+- `read_file` 超过 context budget 时保留真实源码 excerpt，不降级成一句 summary。
+- `read_file` 的 line range / maxLines 是用户和 agent 精确读取源码的主要方式，后续 Context Inspector 应能展示 excerpt 和 `rawRef`。
 
 自定义 web trace flow fallback：
 
@@ -531,11 +551,8 @@ benchmark 关系：
 实现文件建议：
 
 - `src/types/trace.type.ts`
-- `src/trace/trace-store.ts`
-- `src/trace/jsonl-trace-store.ts`
-- `src/trace/mlflow-trace-exporter.ts` 或 `src/trace/otel-trace-exporter.ts`
-- `src/demo/trace-viewer.ts` 或 `src/demo/trace-summary.ts`
-- `tests/trace-store.test.ts`
+- `src/trace/mlflow-trace-recorder.ts`
+- `src/core/agent-loop-trace.ts`
 - `tests/agent-loop-trace.test.ts`
 
 暂不做：
@@ -552,9 +569,9 @@ benchmark 关系：
 - 未知 tool 不 crash。
 - tool 抛错后返回可记录错误。
 - 后续真实 tool 必须覆盖输出压缩、raw artifact、token metrics、redaction 和错误路径。
-- trace JSONL 可 parse。
-- 多轮 tool call 的 trace span parent/child 关系可断言。
-- MLflow / OTel exporter 可以在无 MLflow server 时被 mock 测试。
+- trace recorder 收到 run、context、model、tool span。
+- 多轮 tool call 的 trace span parent/child 关系后续用 recorder 断言。
+- MLflow exporter 可以用 mock trace recorder 测试，不要求单元测试启动 MLflow server。
 
 ### Lesson 1.4 HookRunner MVP
 
@@ -734,8 +751,8 @@ bun run demo
 
 - Lesson 1.1 到 Lesson 1.3 的学习内容可以根据 tag 查看。
 - `bun run demo` 可以通过真实 OpenAI-compatible provider 跑通最小 agent loop，并观察 token usage。
-- DEBUG 日志可以展示 provider request、provider event、tool result、stop reason。
-- 单次 provider call 的 `durationMs`、`eventCount`、`stopReason`、`usage` 可以看到。
+- MLflow trace 可以展示 provider request、provider event、tool result、stop reason。
+- 单次 provider call 的 duration、event count、stop reason 和 usage 进入 MLflow span attributes。
 - `bun run check`、`bun run typecheck`、`bun test` 通过。
 
 后续每次增强 Lesson 1 的能力，都必须在本计划中补充“小节 -> tag”的对应关系，让学习者能按 tag 逐步查看实现过程。

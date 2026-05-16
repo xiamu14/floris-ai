@@ -2,7 +2,7 @@
 
 ## 当前 tag 定位
 
-当前 tag 覆盖 Lesson 1.1 到 Lesson 1.3 的学习目标，并额外提供一个 **agent-loop 最基本调用 + debug 可观测** demo。
+当前 tag 覆盖 Lesson 1.1 到 Lesson 1.3 的学习目标，并额外提供一个 **agent-loop 最基本调用 + MLflow trace 可观测** demo。
 
 它不是 Lesson 1 完整完成版。session、context window、hooks、permission、memory 都还没有真正实现。当前代码的价值是让学习者先掌握 runtime skeleton、provider boundary、tool registry，然后看到 agent loop 的最小闭环：
 
@@ -15,7 +15,7 @@ user message
   -> tool result message
   -> next provider request
   -> stop reason
-  -> debug logs
+  -> MLflow trace
 ```
 
 tag 名称：
@@ -78,17 +78,13 @@ lesson1-agent-loop-basic-debug
 
 `packages/agent-runtime/src/demo/run-demo.ts`
 - 串起 MIMO OpenAI-compatible provider path。
-- 显式开启 `DEBUG = true`。
+- 默认创建 `MlflowTraceRecorder`，把 agent run 写入本地 MLflow。
 
-`packages/agent-runtime/src/demo/utils/debug-model-provider.ts`
-- 包装 provider，打印每次 `createMessage` 的 request、event、duration 和 usage。
+`packages/agent-runtime/src/trace/mlflow-trace-recorder.ts`
+- 负责把 Floris `TraceRecorder` contract 映射到 MLflow spans。
 
-`packages/agent-runtime/src/demo/utils/debug-session-store.ts`
-- 包装 session store，实时打印 agent events。
-
-`packages/agent-runtime/src/demo/utils/debug-logger.ts`
-- 统一日志格式：`HH:mm:ss sss[group][step] message`。
-- 使用 `chalk` 给日志加颜色。
+`packages/agent-runtime/src/core/agent-loop-trace.ts`
+- 负责 Agent Loop 中 context、model、tool span 的创建和结束。
 
 ## 实际执行路径
 
@@ -104,35 +100,26 @@ bun run demo
   -> ModelEvent stream or provider_error
 ```
 
-## DEBUG 日志证明了什么
+## MLflow Trace 证明了什么
 
-日志可以看到：
+MLflow trace 可以看到：
 
-- provider 选择过程。
-- agent profile。
-- 每次 provider request 的完整 `ModelRequest`。
-- provider 返回的每个 `ModelEvent`。
-- tool call 输入。
-- tool result。
-- 每次 provider call 的 `durationMs`、`eventCount`、`stopReason`、`usage`。
-- 最终 `RunTurnResult`。
+- `agent.run` root span。
+- `context.build` span。
+- `model.request` span。
+- `tool.<name>` span。
+- tool result summary 和 filtering metrics。
+- stop reason、总 usage、model request 次数、tool call 次数。
+- 每个 model span 的 message preview 和 response preview。
+- 每个 model span 的单次 provider usage。
 
-示例：
+trace `tr-ef0b30f3157c3606a8dbe3b6a7813954` 说明了一个真实问题：`analyze-case` 并不是简单超过 `maxIterations`，而是 provider 返回了 `max_tokens`，并且没有 tool call。现在 Agent Loop 会把这种情况记录为 `provider_max_tokens`，避免把截断回答当成正常结束。
 
-```text
-10:39:04 052[provider][usage] finish message #0
-{
-  "callId": 0,
-  "durationMs": 0,
-  "eventCount": 2,
-  "stopReason": "tool_use",
-  "usage": {
-    "inputTokens": 0,
-    "outputTokens": 0,
-    "totalTokens": 0
-  }
-}
-```
+output budget 不按 `analyze-case` 特判。当前默认策略是普通 provider request 使用 `4096`，final synthesis request 覆盖到 `8192`。后续如果引入 `AgentProfile.outputPolicy`，再按 agent role 或任务阶段细分。
+
+trace `tr-2d7c45c1740b39d826100e50cd7ce383` 说明下一层瓶颈在 tool output budget：`FetchEntity.ts` 已经被 `read_file` 读到，但因为 context budget 太小，被压成 `summary_only`。现在默认 tool context budget 提到 `1600`，并且 `read_file` 超预算时保留真实源码 excerpt。
+
+console 不再作为 agent loop 默认观察面，只输出最终 demo summary 和必要错误。临时 bug 排查可以在局部加短期 debug wrapper，但不要把它作为常规运行过程观察方案。
 
 ## 测试覆盖
 
@@ -143,7 +130,9 @@ bun run demo
 - provider resolver 的 role fallback、model fallback、missing API key error。
 - tool registry 执行和 unknown tool error。
 - agent loop 一次 tool call 后结束。
-- agent loop 超过 `maxIterations` 后停止。
+- agent loop 达到 `maxIterations` 后先做 no-tool final synthesis。
+- provider `max_tokens` 截断后返回 `provider_max_tokens`。
+- `read_file` 超过 context budget 时保留源码 excerpt。
 - MIMO config shape。
 
 当前测试还没有覆盖：

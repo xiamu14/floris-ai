@@ -6,14 +6,11 @@ import { resolveProviderForRole } from "../providers/provider-resolver";
 import { InMemorySessionStore } from "../session/in-memory-session-store";
 import { toolRegistry } from "../tools/tool";
 import { InMemoryToolOutputArtifactStore } from "../tools/tool-output-artifact-store";
+import { MlflowTraceRecorder } from "../trace/mlflow-trace-recorder";
 import type { AgentProfile } from "../types/agent.type";
-import type { DebugLogger } from "../types/log.type";
 import type { ModelProvider } from "../types/provider.type";
-import { createDebugLogger } from "./utils/debug-logger";
-import { DebugModelProvider } from "./utils/debug-model-provider";
-import { DebugSessionStore } from "./utils/debug-session-store";
+import type { TraceRecorder } from "../types/trace.type";
 
-const DEBUG = true;
 const demoArgs = process.argv.slice(2);
 const exampleName = readExampleName(demoArgs);
 const freeformMessage = readFreeformMessage(demoArgs);
@@ -25,43 +22,19 @@ const userMessage =
   readExampleMessage(exampleName) ||
   "Use echo_tool to echo hello, then summarize the result.";
 
-const logger = createDebugLogger({
-  debug: DEBUG,
-});
-
-logger.log("agentLoop", "start", "run demo", {
-  debug: DEBUG,
-  exampleName: exampleName ?? "default",
-  workspacePath,
-  allowedTools,
-  maxIterations,
-  userMessage,
-});
-
-const provider = createMimoProvider(logger);
+const provider = createMimoProvider();
 
 if (provider) {
-  const debugProvider = new DebugModelProvider({
-    logger,
-    provider,
-  });
   const sessionStore = new InMemorySessionStore();
-  const profile = createDemoProfile(debugProvider.id, allowedTools);
-
-  logger.log("agentLoop", "create", "create agent loop", {
-    providerId: debugProvider.id,
-    profile,
-  });
+  const profile = createDemoProfile(provider.id, allowedTools);
 
   const loop = new AgentLoop({
-    provider: debugProvider,
+    provider,
     toolRegistry,
     toolOutputArtifactStore: new InMemoryToolOutputArtifactStore(),
     contextBuilder: new BasicContextBuilder(),
-    sessionStore: new DebugSessionStore({
-      logger,
-      store: sessionStore,
-    }),
+    sessionStore,
+    traceRecorder: createTraceRecorder(),
   });
 
   const result = await loop.runTurn({
@@ -73,12 +46,6 @@ if (provider) {
     options: {
       maxIterations,
     },
-  });
-
-  logger.log("agentLoop", "finish", "agent loop finished", {
-    stopReason: result.stopReason,
-    finalMessage: result.finalMessage,
-    usage: result.usage,
   });
 
   console.log(
@@ -110,37 +77,30 @@ if (provider) {
   process.exitCode = 1;
 }
 
-function createMimoProvider(logger: DebugLogger): ModelProvider | undefined {
-  logger.log("config", "read", "read MIMO agent config");
-  const config = createMimoAgentConfig();
+function createTraceRecorder(): TraceRecorder {
+  const trackingUri =
+    process.env.MLFLOW_TRACKING_URI ?? "http://127.0.0.1:5001";
+  const experimentId = process.env.MLFLOW_EXPERIMENT_ID ?? "0";
 
-  logger.log("provider", "resolve", "resolve provider for role", {
-    requestedRole: "coder",
-    providerType: "openai-compatible",
-    providers: Object.keys(config.providers),
-    models: Object.keys(config.models),
+  return new MlflowTraceRecorder({
+    trackingUri,
+    experimentId,
+    sourceName: "packages/agent-runtime/src/demo/run-demo.ts",
   });
+}
+
+function createMimoProvider(): ModelProvider | undefined {
+  const config = createMimoAgentConfig();
 
   const resolved = resolveProviderForRole(config, "coder", {
     providerType: "openai-compatible",
   });
 
   if (!resolved.ok) {
-    logger.log("provider", "error", "provider resolve failed", {
-      error: resolved.error,
-      issues: resolved.issues,
-    });
     console.error(resolved.error);
     console.error(resolved.issues);
     return undefined;
   }
-
-  logger.log("provider", "create", "provider resolved", {
-    role: resolved.role,
-    providerId: resolved.provider.id,
-    model: resolved.model,
-    issues: resolved.issues,
-  });
 
   return resolved.provider;
 }
@@ -284,10 +244,10 @@ function readExampleWorkspacePath(exampleName: string | undefined) {
 
 function readExampleMaxIterations(exampleName: string | undefined): number {
   if (exampleName === "analyze-case") {
-    return 8;
+    return 50;
   }
 
-  return 4;
+  return 30;
 }
 
 function readExampleAllowedTools(

@@ -474,7 +474,7 @@ Lesson 1.3 先做 tool pipeline，不被 Lesson 1.4 HookRunner 阻塞：
 
 ### 为什么不能继续只靠 command output
 
-当前 demo 通过 DEBUG logger 把 provider request、provider event、tool call、tool result 打到 terminal。这个方式适合学习第一条最小路径，但不适合真实 agent loop：
+早期 demo 曾通过 DEBUG logger 把 provider request、provider event、tool call、tool result 打到 terminal。这个方式适合临时 bug 排查，但不适合作为 agent loop 的默认观察方式：
 
 - 多轮 tool call 会把日志打散，难以看出一次 run 的树状关系。
 - `run_command`、`git_diff`、`http_request` 会产生长输出，terminal 很快被噪声淹没。
@@ -571,26 +571,28 @@ export interface TraceEvent {
 
 ### MLflow 优先，可替换导出
 
-可视化优先接 MLflow，原因是它已经面向 LLM / agent tracing，支持 trace UI、token / latency 观察，也能和 evaluation 连接起来。MLflow 当前提供 JS/TS tracing quickstart，并支持 OpenTelemetry ingest，所以 Floris 不需要把内部模型写死成 MLflow。
+可视化优先接 MLflow，原因是它已经面向 LLM / agent tracing，支持 trace UI、token / latency 观察，也能和 evaluation 连接起来。Floris 不把内部 trace contract 写死成 MLflow，后续仍可以替换 exporter。
 
-推荐方式：
+当前 Lesson 1.3 先不考虑 OpenTelemetry，直接使用 `mlflow-tracing` TypeScript SDK：
 
 ```text
 Floris TraceSpan
-  -> OtelTraceExporter
-  -> MLflow OTLP endpoint
+  -> MlflowTraceRecorder
+  -> mlflow-tracing SDK
   -> MLflow UI
 ```
 
+独立文档见 `docs/architecture/mlflow-tracing.md`。
+
 映射建议：
 
-| Floris span | MLflow / OTel 表达 |
+| Floris span | MLflow 表达 |
 | --- | --- |
 | `agent.run` | root trace / root span |
 | `context.build` | child span |
 | `model.request` | GenAI client span |
-| `tool.execute` | tool span |
-| `tool.output_filter` | internal processing span |
+| `tool.<name>` | tool span |
+| `tool.output_filter` | future internal processing span |
 | `permission.check` | internal decision span |
 | `hook.run` | internal hook span |
 
@@ -608,16 +610,21 @@ floris.tool.raw_tokens
 floris.tool.context_tokens
 floris.tool.reduction_ratio
 floris.tool.raw_ref
-gen_ai.request.model
-gen_ai.usage.input_tokens
-gen_ai.usage.output_tokens
+floris.provider_id
+floris.model_id
+floris.provider.usage.input_tokens
+floris.provider.usage.output_tokens
+floris.provider.usage.total_tokens
+floris.usage.total_tokens
+floris.metrics.model_request_count
+floris.metrics.tool_call_count
 ```
 
 设计约束：
 
 - Floris 内部 trace contract 不 import MLflow SDK 类型。
 - MLflow exporter 是 adapter，可以关掉。
-- 没有 MLflow server 时 demo 仍然能写 JSONL trace。
+- 没有 MLflow server 时，单元测试通过 fake trace recorder 覆盖 trace contract；demo 默认要求本地 MLflow。
 - MLflow trace ID 不能替代 Floris `runId`。
 - secret、API key、credential 不进入 span attributes。
 

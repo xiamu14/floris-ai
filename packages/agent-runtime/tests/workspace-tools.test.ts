@@ -49,6 +49,43 @@ describe("workspace tools", () => {
     });
   });
 
+  it("keeps read_file source excerpts when context budget is exceeded", async () => {
+    const workspacePath = await mkdtemp(path.join(tmpdir(), "floris-tools-"));
+    const context = createToolContext(workspacePath);
+    const source = Array.from(
+      { length: 80 },
+      (_, index) => `export const value${index} = ${index};`
+    ).join("\n");
+
+    await writeFile(path.join(workspacePath, "source.ts"), source);
+
+    const rawResult = await readFileTool.execute(
+      { path: "source.ts", maxLines: 80 },
+      context
+    );
+    const policyResult = defaultToolResultPolicy.apply({
+      result: rawResult,
+      maxContextTokens: 80,
+    });
+
+    expect(policyResult.result).toMatchObject({
+      ok: true,
+      context: {
+        policy: "include",
+        content: expect.stringContaining("export const value0"),
+      },
+      metrics: {
+        truncated: true,
+      },
+      omitted: [
+        {
+          reason: "context_budget_exceeded",
+        },
+      ],
+    });
+    expect(policyResult.result.context.content).not.toBe("Read source.ts.");
+  });
+
   it("blocks command paths outside the workspace and risky command args", async () => {
     const workspacePath = await mkdtemp(path.join(tmpdir(), "floris-tools-"));
     const context = createToolContext(workspacePath);

@@ -4,11 +4,13 @@ import type { ModelProvider } from "./provider.type";
 import type { SessionStore } from "./session.type";
 import type { ToolRegistry } from "./tool.type";
 import type { ToolOutputArtifactStore } from "./tool-output.type";
+import type { TraceRecorder } from "./trace.type";
 
 export type LoopStopReason =
   | "assistant_done"
   | "tool_use"
   | "max_iterations"
+  | "provider_max_tokens"
   | "provider_error"
   | "user_interrupted"
   | "tool_error";
@@ -21,6 +23,7 @@ export interface TokenUsage {
 
 export interface AgentRunOptions {
   maxIterations?: number;
+  forceSynthesisOnMaxIterations?: boolean;
 }
 
 export interface RunTurnInput {
@@ -46,6 +49,7 @@ export interface AgentLoopDeps {
   provider: ModelProvider;
   toolRegistry: ToolRegistry;
   toolOutputArtifactStore?: ToolOutputArtifactStore;
+  traceRecorder?: TraceRecorder;
   toolContextMaxTokens?: number;
   hookRunner?: unknown;
   contextBuilder: ContextBuilder;

@@ -1,6 +1,7 @@
 import { defineAgentConfig } from "../providers/model-provider";
 
 const MIMO_PLATFORM_BASE_URL = "https://api.xiaomimimo.com/v1";
+const DEFAULT_CODE_AGENT_MAX_COMPLETION_TOKENS = 4096;
 
 export function createMimoAgentConfig(env: NodeJS.ProcessEnv = process.env) {
   return defineAgentConfig({
@@ -21,7 +22,7 @@ export function createMimoAgentConfig(env: NodeJS.ProcessEnv = process.env) {
         providerId: "mimo",
         modelId: "mimo-v2.5-pro",
         parameters: {
-          maxCompletionTokens: 1024,
+          maxCompletionTokens: DEFAULT_CODE_AGENT_MAX_COMPLETION_TOKENS,
           temperature: 1,
           topP: 0.95,
           frequencyPenalty: 0,

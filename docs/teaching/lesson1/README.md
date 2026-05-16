@@ -320,7 +320,7 @@ packages/agent-runtime/
 
 - `ModelProvider` 使用 Strategy。`AgentLoop` 只依赖这个接口，不关心 Anthropic、OpenAI 或本地模型。
 - 真实 provider 接入时使用 Adapter。不同 SDK 的 request、response、stop reason、tool call shape 都转成 Floris AI 内部 `ModelRequest` / `ModelEvent`。
-- DEBUG 日志使用 Decorator 思路包装 `ModelProvider`。真实网络请求、日志、token usage 统计都围绕 provider boundary 观察。
+- Agent Loop 运行过程默认通过 MLflow trace 观察。console 只输出最终 demo summary 和必要错误。
 - `ModelEvent` stream 使用 `AsyncIterable`。Provider 可以流式输出文本、tool call、usage 和 done event。
 - 模型返回的 tool call 按 Command 思路处理：provider 只产出 `{ id, name, input }`，执行交给 `ToolRegistry`。
 
@@ -489,9 +489,11 @@ Lesson 1 内置一个最小 tool：
 
 ### Lesson 1.3.x Structured Trace and Visual Observation
 
+状态：implemented with local MLflow demo
+
 目标：
 
-- 在继续补真实 tools 前，先把 Agent Loop 运行过程从 DEBUG console log 升级为 structured trace。
+- 在继续补真实 tools 前，先把 Agent Loop 运行过程从 console debug log 升级为 structured trace。
 - 让多轮 tool call、provider events、tool output filtering、token metrics、stop reason 能被查询和可视化。
 - 为后续 benchmark 提供同一份运行 artifact，避免 benchmark 只断言最终文本。
 
@@ -502,12 +504,26 @@ Lesson 1 内置一个最小 tool：
 - 第一版 trace 写 JSONL，默认在本地 `.floris-traces/` 目录保存。
 - trace 通过 `runId`、`threadId`、`branchId`、`iteration`、`toolCallId` 关联 agent loop、provider 和 tool。
 - trace 记录 duration、usage、tool metrics、rawRef、reduction ratio、stop reason，但不保存 secret 原文。
+- 当前实现优先接 MLflow，不先做 JSONL viewer。JSONL 仍保留为后续 benchmark artifact 方向。
 
 可视化策略：
 
-- 优先尝试接入 MLflow Tracing。Floris 内部 trace contract 不直接依赖 MLflow，而是通过 MLflow / OpenTelemetry exporter 映射。
+- 优先接入 MLflow Tracing。Floris 内部 trace contract 不直接依赖 MLflow，而是通过 `MlflowTraceRecorder` adapter 映射。
+- 当前不引入 OpenTelemetry 设计，直接使用 `mlflow-tracing` TypeScript SDK。
 - 如果 MLflow 本地启动、数据映射或实时观察成本不适合 Lesson 1.3，就先做简易 web trace flow。
 - 简易 viewer 读取同一份 JSONL trace，展示 run list、span tree / timeline、selected span details、tool output、token metrics 和 event sequence。
+
+本地运行：
+
+```bash
+docker compose up -d mlflow
+cd packages/agent-runtime
+MLFLOW_TRACKING_URI=http://127.0.0.1:5001 MLFLOW_EXPERIMENT_ID=0 bun run demo --example echo
+```
+
+详细说明见 `docs/architecture/mlflow-tracing.md`。
+
+PromptManager / AgentVersion 和 MLflow Prompt Registry / Agent versions 的关系见 `docs/architecture/mlflow-prompt-and-agent-versioning.md`。结论是 Floris 本地 typed contract 仍是 source of truth，MLflow 用作 registry mirror、trace lineage 和 eval UI。
 
 benchmark 策略：
 
@@ -650,7 +666,10 @@ Lesson 1 停止条件：
 
 - provider 只返回 text，loop 以 `assistant_done` 结束。
 - provider 先返回 tool call，再返回 text，loop 正常结束。
-- provider 连续请求 tool，超过 `max_iterations` 后停止。
+- provider 连续请求 tool，达到 `max_iterations` 后先做一次 no-tool final synthesis。
+- provider 返回 `max_tokens` 且没有 tool call 时，loop 返回 `provider_max_tokens`。
+- 默认 output budget 面向通用 code agent：普通 provider request 使用 `4096`，final synthesis request 覆盖到 `8192`。
+- 默认 tool context budget 使用 `1600`；`read_file` 超预算时保留源码 excerpt，不降级成纯 summary。
 - abort 后停止，reason 是 `user_interrupted`。
 
 ### Lesson 1.7 Demo, verification, and documentation sync
@@ -658,7 +677,7 @@ Lesson 1 停止条件：
 目标：
 
 - 提供一个 CLI demo，证明 runtime 能跑。
-- 当前 tag 重点提供 DEBUG 日志，观察最小 agent loop 的调用过程和单次 provider call token usage。
+- 当前 demo 默认写入 MLflow trace，用于观察 agent loop、provider、tool 和 token usage。
 - 写出教学笔记和实现拆解。
 - 总结哪些地方是 MVP 简化版。
 

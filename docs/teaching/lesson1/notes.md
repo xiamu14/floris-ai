@@ -2,14 +2,14 @@
 
 ## 当前实现边界
 
-当前代码 tag 覆盖 Lesson 1.1 到 Lesson 1.3 的学习目标，并额外提供 **agent-loop 最基本调用 + debug 可观测** demo。
+当前代码 tag 覆盖 Lesson 1.1 到 Lesson 1.3 的学习目标，并额外提供 **agent-loop 最基本调用 + MLflow trace 可观测** demo。
 
 这个里程碑证明：
 
 - Lesson 1.1：runtime package、目录、类型管理、测试工具链已经足够支撑后续开发。
 - Lesson 1.2：`ModelProvider`、OpenAI-compatible provider、MIMO config、role resolver 的边界已经能讲清楚。
 - Lesson 1.3：`ToolRegistry` 和 `echo_tool` 已经能解释 tool call 到 tool result 的回填路径。
-- Debug demo：可以看到最小 agent loop 如何闭环。
+- MLflow trace demo：可以看到最小 agent loop 如何闭环。
 
 ```text
 user message
@@ -19,7 +19,7 @@ user message
   -> tool result 回填
   -> second provider call
   -> stop reason
-  -> DEBUG 日志观察全过程
+  -> MLflow trace 观察全过程
 ```
 
 Lesson 1.4 之后还没有真正完成。context/session 当前只是为了支撑 demo 的最小 stub，不能算 context window 或 session persistence。
@@ -33,7 +33,7 @@ Lesson 1.4 之后还没有真正完成。context/session 当前只是为了支�
 - `BasicContextBuilder`，只构建最小 system prompt、messages 和 token estimate；这不是 context window。
 - `InMemorySessionStore`，只记录本轮 agent events；这不是 session persistence。
 - `AgentLoop.runTurn()`，支持 provider call、tool call、tool result 回填、停止条件和 event log。
-- `run-demo.ts` 通过 MIMO 跑完整 chat agent loop，并用 DEBUG 日志观察 provider request / event / 单次 token usage。
+- `run-demo.ts` 通过 MIMO 跑完整 chat agent loop，并用 MLflow trace 观察 provider、tool 和 token usage。
 
 还没有真正实现：
 
@@ -46,7 +46,7 @@ Lesson 1.4 之后还没有真正完成。context/session 当前只是为了支�
 - token-aware tool output envelope、raw artifact、tool output filtering。
 - SwiftUI bridge 和 UI 展示。
 
-学习者应该把当前 tag 当成 Lesson 1.1 到 Lesson 1.3 的学习完成点：先理解 runtime skeleton、provider boundary、tool registry，再通过 DEBUG 日志观察最小 agent loop。后续再继续补 HookRunner、session、context window、permission、memory。
+学习者应该把当前 tag 当成 Lesson 1.1 到 Lesson 1.3 的学习完成点：先理解 runtime skeleton、provider boundary、tool registry，再通过 MLflow trace 观察最小 agent loop。后续再继续补 HookRunner、session、context window、permission、memory。
 
 当前学习 tag：
 
@@ -66,7 +66,7 @@ lesson1-agent-loop-basic-debug
 | 1.4 HookRunner | not implemented | 只有占位，没有真实 hook pipeline。 |
 | 1.5 Context / memory / session / permission | not implemented as capability | context/session 只是最小 stub；context window、memory、permission 没有实现。 |
 | 1.6 AgentLoop | partial in `lesson1-agent-loop-basic-debug` | basic call path 已存在，用于支撑 demo；完整状态机后续继续补。 |
-| 1.7 CLI demo | partial in `lesson1-agent-loop-basic-debug` | debug demo 可运行；完整 lesson 收尾文档和更完整验证后续继续补。 |
+| 1.7 CLI demo | partial in `lesson1-agent-loop-basic-debug` | MLflow trace demo 可运行；完整 lesson 收尾文档和更完整验证后续继续补。 |
 
 后续每次修改 Lesson 1，都要在本表或 plan 文档里写清楚新增能力对应哪个 tag。
 
@@ -290,7 +290,7 @@ runTurn()
 - 没有 branch tree。
 - 没有真实 persistence。
 
-## Lesson 1.7 CLI demo and DEBUG logs
+## Lesson 1.7 CLI demo and MLflow trace
 
 ### 目标
 
@@ -299,10 +299,9 @@ runTurn()
 ### 关键文件
 
 - `src/demo/run-demo.ts`
-- `src/demo/utils/debug-logger.ts`
-- `src/demo/utils/debug-model-provider.ts`
-- `src/demo/utils/debug-session-store.ts`
-- `src/types/log.type.ts`
+- `src/trace/mlflow-trace-recorder.ts`
+- `src/core/agent-loop-trace.ts`
+- `src/types/trace.type.ts`
 
 ### Demo 路径
 
@@ -314,24 +313,44 @@ bun run demo
   -> provider returns events and usage
 ```
 
-### DEBUG 日志
+### MLflow trace
 
-`run-demo.ts` 显式设置 `DEBUG = true`。日志格式：
+`run-demo.ts` 默认创建 `MlflowTraceRecorder`。运行 demo 前先启动本地 MLflow：
 
-```text
-HH:mm:ss sss[agentLoop][createMessage] provider request #0
+```bash
+docker compose up -d mlflow
 ```
 
-object 使用格式化 JSON 输出。`DebugModelProvider` 会给每次 provider call 分配 `callId`，并在结束时打印：
+然后运行：
 
-- `durationMs`
-- `eventCount`
-- `stopReason`
-- 本次 `usage`
+```bash
+bun run demo --example echo
+```
 
 ### 当前简化
 
-DEBUG logger 只服务 demo。runtime 内部默认不打印日志，后续 UI 观察能力应基于 event stream 和 session persistence，而不是 console log。
+runtime 内部默认不打印运行过程日志。MLflow trace 是 agent loop 运行过程的默认观察面，console 只保留最终 demo summary 和必要错误。
+
+### `maxIterations` 和 `max_tokens`
+
+`maxIterations` 是 agent loop 的 tool round budget；provider `max_tokens` 是单次 model response 的输出上限。两者不能混在一起看。
+
+本轮修正后：
+
+- provider 返回 `max_tokens` 且没有 tool call 时，loop 返回 `provider_max_tokens`。
+- 达到 `maxIterations` 时，默认追加一次 no-tool final synthesis request，要求模型只基于已有 observation 给出结论。
+- root trace outputs 写入 `usage` 和 `metrics`，model span 写入 message preview、response preview 和单次 provider usage。
+- 默认 output budget 面向通用 code agent：普通 provider request 使用 `4096`，final synthesis request 覆盖到 `8192`。
+
+### Tool output budget
+
+`tr-2d7c45c1740b39d826100e50cd7ce383` 说明 output budget 不是唯一瓶颈。该 run 正常 `assistant_done`，但 `FetchEntity.ts` 被 `read_file` 读到后又被 context policy 压成 10 token summary，导致 agent 误以为核心文件没有读到。
+
+本轮修正后：
+
+- 默认 tool context budget 提到 `1600`。
+- `read_file` 超过 budget 时保留源码 excerpt，不再只返回 summary。
+- 其他 tool 仍然可以按 summary 策略降级，避免命令日志污染 context。
 
 ## 验证命令
 
