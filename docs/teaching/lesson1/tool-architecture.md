@@ -470,6 +470,208 @@ Lesson 1.3 先做 tool pipeline，不被 Lesson 1.4 HookRunner 阻塞：
 
 > Tool optimizer 负责把真实世界输出变成可用信息。Runtime guard 负责决定什么能进入 model context。Hooks 负责在生命周期点观察、阻止、记录或调整决策。
 
+## 结构化 Trace 和可视化观察
+
+### 为什么不能继续只靠 command output
+
+当前 demo 通过 DEBUG logger 把 provider request、provider event、tool call、tool result 打到 terminal。这个方式适合学习第一条最小路径，但不适合真实 agent loop：
+
+- 多轮 tool call 会把日志打散，难以看出一次 run 的树状关系。
+- `run_command`、`git_diff`、`http_request` 会产生长输出，terminal 很快被噪声淹没。
+- output filtering 的判断需要同时看 raw output、context output、token metrics 和 `rawRef`。
+- benchmark 失败时需要复盘完整运行过程，console 文本很难稳定断言。
+- 后续 Context Inspector、session replay、permission audit 都需要结构化数据，不应该从 log 文本反推。
+
+因此 Lesson 1.3 在继续补 tool 之前，先补一个小的 structured trace 层。它不是完整 telemetry 平台，而是让 agent loop 每次运行都有一份可保存、可查询、可视化的运行记录。
+
+### AgentEvent 和 Trace 的边界
+
+`AgentEvent` 面向产品历史：
+
+- 保存 thread / branch 中用户能理解的工作记录。
+- 后续用于 session replay、chat timeline、Context Inspector 和审计。
+- 内容要稳定、克制、脱敏。
+
+`TraceEvent` / `TraceSpan` 面向开发观察：
+
+- 保存一次 run 的低层运行过程。
+- 记录 duration、parent-child span、iteration、provider event count、tool metrics。
+- 用于 debug、benchmark、teaching demo 和可视化分析。
+- 可以比 `AgentEvent` 更细，但仍然不能包含 secret 原文。
+
+两者通过稳定 ID 关联：
+
+```text
+runId
+threadId
+branchId
+iteration
+modelRequestId
+toolCallId
+parentSpanId
+```
+
+这个拆分避免把产品 session 变成杂乱 debug dump，也避免把 debug trace 当成未来 UI 的唯一数据源。
+
+### Trace 数据模型
+
+建议最小类型：
+
+```ts
+export interface RunTrace {
+  runId: string;
+  threadId: string;
+  branchId: string;
+  agentId: string;
+  startedAt: string;
+  finishedAt?: string;
+  stopReason?: string;
+  spans: TraceSpan[];
+  events: TraceEvent[];
+  metrics: TraceMetrics;
+}
+
+export interface TraceSpan {
+  id: string;
+  parentId?: string;
+  runId: string;
+  name: string;
+  kind: "agent" | "context" | "model" | "tool" | "filter" | "permission" | "hook";
+  startedAt: string;
+  finishedAt?: string;
+  status: "running" | "ok" | "error";
+  attributes: Record<string, string | number | boolean>;
+}
+
+export interface TraceEvent {
+  id: string;
+  runId: string;
+  spanId?: string;
+  type: string;
+  createdAt: string;
+  payload?: unknown;
+}
+```
+
+第一版不需要复杂采样，也不需要远程 backend。先用 JSONL：
+
+```text
+.floris-traces/
+  2026-05-16/
+    run_<runId>.jsonl
+```
+
+每行一个 record：
+
+```json
+{"type":"span_started","span":{"id":"...","name":"model.request"}}
+{"type":"event","event":{"type":"provider_tool_call_done"}}
+{"type":"span_finished","spanId":"...","status":"ok","durationMs":812}
+```
+
+### MLflow 优先，可替换导出
+
+可视化优先接 MLflow，原因是它已经面向 LLM / agent tracing，支持 trace UI、token / latency 观察，也能和 evaluation 连接起来。MLflow 当前提供 JS/TS tracing quickstart，并支持 OpenTelemetry ingest，所以 Floris 不需要把内部模型写死成 MLflow。
+
+推荐方式：
+
+```text
+Floris TraceSpan
+  -> OtelTraceExporter
+  -> MLflow OTLP endpoint
+  -> MLflow UI
+```
+
+映射建议：
+
+| Floris span | MLflow / OTel 表达 |
+| --- | --- |
+| `agent.run` | root trace / root span |
+| `context.build` | child span |
+| `model.request` | GenAI client span |
+| `tool.execute` | tool span |
+| `tool.output_filter` | internal processing span |
+| `permission.check` | internal decision span |
+| `hook.run` | internal hook span |
+
+关键 attributes：
+
+```text
+floris.run_id
+floris.thread_id
+floris.branch_id
+floris.agent_id
+floris.iteration
+floris.stop_reason
+floris.tool.name
+floris.tool.raw_tokens
+floris.tool.context_tokens
+floris.tool.reduction_ratio
+floris.tool.raw_ref
+gen_ai.request.model
+gen_ai.usage.input_tokens
+gen_ai.usage.output_tokens
+```
+
+设计约束：
+
+- Floris 内部 trace contract 不 import MLflow SDK 类型。
+- MLflow exporter 是 adapter，可以关掉。
+- 没有 MLflow server 时 demo 仍然能写 JSONL trace。
+- MLflow trace ID 不能替代 Floris `runId`。
+- secret、API key、credential 不进入 span attributes。
+
+### 自定义 Web Trace Flow fallback
+
+如果 MLflow 在本地开发期启动成本高，或不能满足我们对 tool output / rawRef / token filtering 的展示需求，就先做一个简易 web viewer。
+
+第一版页面只做开发工具，不做产品 UI：
+
+```text
+run list
+  -> span tree / timeline
+  -> selected span details
+  -> tool input / summary / context output / rawRef
+  -> token metrics / stop reason / event sequence
+```
+
+技术选择保持简单：
+
+- 读取本地 JSONL trace。
+- 用一个轻量 Vite / static HTML viewer 展示。
+- 不需要数据库。
+- 不需要登录。
+- 不需要实时 streaming，先支持 run 完成后查看。
+
+后续如果需要实时观察，再让 trace writer 同时输出 SSE / WebSocket event。不要在 Lesson 1.3 一开始就做复杂服务。
+
+### Trace 和 Benchmark 共用数据
+
+早期 benchmark 不应该只看最终文本。对 agent loop 来说，过程是否正确同样重要：
+
+- 有没有按预期选择 tool。
+- 有没有在一轮里处理多个 tool call。
+- tool error 是否走了正确 stop reason。
+- output filtering 是否控制住 context tokens。
+- provider usage 是否被累计。
+- max iterations 是否可解释。
+
+因此 benchmark runner 应复用 `TraceStore`。每个 case 输出 trace JSONL，失败时直接用 MLflow 或 web viewer 打开。
+
+第一批 deterministic benchmark：
+
+| Case | 目标 |
+| --- | --- |
+| single tool call | user -> model -> tool -> model -> final |
+| multiple tool calls | 一次 provider response 返回多个 tool call |
+| multi-iteration chain | 多轮 tool call 后停止 |
+| recoverable tool error | tool error 进入 context，model 能继续 |
+| non-recoverable tool error | loop 以 `tool_error` 停止 |
+| max iterations | 达到预算后有明确 stop reason |
+| output filtering budget | raw tokens、context tokens、reduction ratio 可断言 |
+
+这些 benchmark 使用 scripted provider，不依赖真实网络，也不依赖模型随机性。真实 provider smoke eval 后续单独加，必须通过 env 显式开启。
+
 ## 实现清单
 
 ### 第一批通用 tool

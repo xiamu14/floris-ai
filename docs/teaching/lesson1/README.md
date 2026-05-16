@@ -487,11 +487,43 @@ Lesson 1 内置一个最小 tool：
 
 但第一课推荐先用 `echo_tool`，减少 filesystem 变量。
 
+### Lesson 1.3.x Structured Trace and Visual Observation
+
+目标：
+
+- 在继续补真实 tools 前，先把 Agent Loop 运行过程从 DEBUG console log 升级为 structured trace。
+- 让多轮 tool call、provider events、tool output filtering、token metrics、stop reason 能被查询和可视化。
+- 为后续 benchmark 提供同一份运行 artifact，避免 benchmark 只断言最终文本。
+
+设计方向：
+
+- `AgentEvent` 继续服务产品/session 历史。
+- `TraceSpan` / `TraceEvent` 服务开发观察、教学演示和 benchmark 复盘。
+- 第一版 trace 写 JSONL，默认在本地 `.floris-traces/` 目录保存。
+- trace 通过 `runId`、`threadId`、`branchId`、`iteration`、`toolCallId` 关联 agent loop、provider 和 tool。
+- trace 记录 duration、usage、tool metrics、rawRef、reduction ratio、stop reason，但不保存 secret 原文。
+
+可视化策略：
+
+- 优先尝试接入 MLflow Tracing。Floris 内部 trace contract 不直接依赖 MLflow，而是通过 MLflow / OpenTelemetry exporter 映射。
+- 如果 MLflow 本地启动、数据映射或实时观察成本不适合 Lesson 1.3，就先做简易 web trace flow。
+- 简易 viewer 读取同一份 JSONL trace，展示 run list、span tree / timeline、selected span details、tool output、token metrics 和 event sequence。
+
+benchmark 策略：
+
+- 第一批 benchmark 用 scripted provider 跑真实 AgentLoop，不依赖真实模型和网络。
+- 每个 benchmark case 输出 trace JSONL。
+- 断言 stop reason、event sequence、tool call sequence、usage、output filtering metrics、trace parseability。
+- 真实 provider smoke eval 后续单独加，必须通过 env 显式开启。
+
 测试要求：
 
 - 已注册 tool 可以执行并返回 result。
 - 未知 tool 返回可恢复错误，不直接 crash。
 - tool error 会被写入 agent event。
+- trace JSONL 可以 parse。
+- 多轮 tool call 的 trace span parent/child 关系可以断言。
+- MLflow / OpenTelemetry exporter 可以用 mock 测试，不要求本地必须启动 MLflow。
 
 ### Lesson 1.4 HookRunner MVP
 

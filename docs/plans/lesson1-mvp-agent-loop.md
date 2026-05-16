@@ -423,6 +423,7 @@ Lesson 1 的 `ModelEvent`：
 - 实现 `ToolRegistry`。
 - 实现 `echo_tool`。
 - 为下一步真实 coding agent tools 定义 token-aware tool architecture。
+- 补充结构化 trace 和可视化观察基础，避免多轮 tool call 只能靠 command output 阅读。
 
 设计要求：
 
@@ -464,12 +465,96 @@ Lesson 1 的 `ModelEvent`：
 
 完整设计见 `docs/teaching/lesson1/tool-architecture.md`。
 
+#### Lesson 1.3.x Structured Trace and Visual Observation
+
+目标：
+
+- 把 Agent Loop 运行过程从 console log 升级为可保存、可查询、可视化的结构化 trace。
+- 让 trace 同时服务开发调试、教学讲解、后续 Context Inspector、benchmark 失败分析。
+- 优先尝试接入 MLflow Tracing；如果 MLflow 接入成本过高或实时观察不满足需求，则实现 Floris 自己的简易 web trace flow。
+
+为什么放在 Lesson 1.3：
+
+- tools 会把 agent loop 从单次 provider call 变成多轮状态机。
+- `run_command`、`http_request`、`git_diff` 这类 tool 输出天然需要 raw artifact、summary、context output、token metrics。
+- 如果继续只在 command output 打印日志，多轮 tool call、长输出过滤、provider retry、tool error 都很难阅读和复盘。
+- benchmark 也需要相同的结构化运行记录，否则后期只能重新补 instrumentation。
+
+设计要求：
+
+- 新增 `trace.type.ts`，定义 `RunTrace`、`TraceSpan`、`TraceEvent`、`TraceStore`、`TraceExportTarget`。
+- `AgentEvent` 继续作为产品/session 事件；trace 作为开发观察和 benchmark artifact，二者通过 `runId`、`threadId`、`branchId`、`toolCallId` 关联。
+- trace 第一版使用 JSONL 文件保存，默认写入 package 内部忽略目录，例如 `.floris-traces/`。
+- trace 必须记录：
+  - run start / stop。
+  - context build duration 和 token estimate。
+  - provider request start / finish / error。
+  - provider event count、stop reason、usage。
+  - tool start / finish / error。
+  - tool raw tokens、context tokens、reduction ratio、truncated、`rawRef`。
+  - final stop reason、total duration、total usage。
+- trace 不保存 secret 原文；tool output 和 provider payload 进入 trace 前要走 redaction / summary。
+- runtime 默认不打印 trace。demo 通过显式 option 启用 trace writer 和 viewer。
+
+MLflow 优先方案：
+
+- Floris 内部 trace contract 不直接依赖 MLflow SDK。
+- 新增 `MlflowTraceExporter` 或 `OtelTraceExporter` adapter，把 Floris `TraceSpan` 映射成 OpenTelemetry-compatible spans。
+- 优先使用 MLflow 的 OpenTelemetry ingest 或 JS/TS tracing 能力，把一次 agent run 展示为一个 trace：
+  - root span: `agent.run`
+  - child span: `context.build`
+  - child span: `model.request`
+  - child span: `tool.execute`
+  - child span: `tool.output_filter`
+- span attributes 使用稳定 Floris 字段，例如 `floris.run_id`、`floris.thread_id`、`floris.branch_id`、`floris.agent_id`、`floris.tool.name`、`floris.stop_reason`。
+- GenAI / model 相关字段尽量按 OpenTelemetry GenAI semantic conventions 映射。
+
+自定义 web trace flow fallback：
+
+- 如果 MLflow 在本地开发期安装、启动或实时观察成本过高，先实现简易 web viewer。
+- viewer 可以读取 JSONL trace 文件，展示：
+  - 左侧 run list。
+  - 中间 timeline / span tree。
+  - 右侧 selected span details。
+  - tool input、summary、context output、rawRef、token metrics。
+  - event sequence 和 stop reason。
+- 第一版 viewer 只服务本地开发，不作为 macOS 产品 UI。
+- viewer 的输入必须是同一份 trace JSONL，避免为了 UI 再维护一套数据。
+
+benchmark 关系：
+
+- benchmark runner 复用 `TraceStore`。
+- deterministic benchmark 使用 scripted provider，不依赖真实网络和模型随机性。
+- 每个 benchmark case 输出 trace 文件，失败时可以直接用 MLflow 或 web viewer 打开。
+- 第一批断言包括 stop reason、event sequence、tool call sequence、usage、output filtering metrics、trace JSONL parseability。
+
+实现文件建议：
+
+- `src/types/trace.type.ts`
+- `src/trace/trace-store.ts`
+- `src/trace/jsonl-trace-store.ts`
+- `src/trace/mlflow-trace-exporter.ts` 或 `src/trace/otel-trace-exporter.ts`
+- `src/demo/trace-viewer.ts` 或 `src/demo/trace-summary.ts`
+- `tests/trace-store.test.ts`
+- `tests/agent-loop-trace.test.ts`
+
+暂不做：
+
+- 不在 Lesson 1.3 做完整 OpenTelemetry collector 管理。
+- 不要求用户必须安装 MLflow 才能跑 demo。
+- 不把 MLflow trace ID 作为 Floris 内部唯一 ID。
+- 不做生产级 telemetry backend。
+- 不做完整 macOS Trace Inspector UI。
+
 测试：
 
 - 注册并执行 `echo_tool`。
 - 未知 tool 不 crash。
 - tool 抛错后返回可记录错误。
 - 后续真实 tool 必须覆盖输出压缩、raw artifact、token metrics、redaction 和错误路径。
+- trace JSONL 可 parse。
+- 多轮 tool call 的 trace span parent/child 关系可断言。
+- MLflow / OTel exporter 可以在无 MLflow server 时被 mock 测试。
 
 ### Lesson 1.4 HookRunner MVP
 
