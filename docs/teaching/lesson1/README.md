@@ -60,9 +60,11 @@ Lesson 1 不做这些深水区：
 
 这些能力会在后续 lesson 中逐步补齐。Lesson 1 只保留接口和最小 stub，避免第一步过大。
 
+Lesson 1 之后的课程方向见 ../../plans/lesson-roadmap.md。当前只有 Lesson 1 已展开成完整计划；Permission Request 不在 Lesson 1 实现范围内，后续会作为 Coding Agent Core 的 runtime protocol 和 Product Shell/UI 的 approval experience 分阶段实现。
+
 ## 参考资料
 
-- Fate AI Agent Loop 实现范式: ../../architecture/agent-loop-implementation-paradigm.md
+- Floris AI Agent Loop 实现范式: ../../architecture/agent-loop-implementation-paradigm.md
 - Amp: How to Build an Agent: https://ampcode.com/notes/how-to-build-an-agent
 - Amp: Agents for the Agent: https://ampcode.com/notes/agents-for-the-agent
 - Amp: Context Management: https://ampcode.com/guides/context-management
@@ -120,7 +122,7 @@ Lesson 1 就是实现这个阶段的最小闭环。
 
 当任务变长，核心问题从“怎么调用工具”变成“给模型什么上下文”。这也是 OpenViking、Skills、RAG、Memory 文章共同指向的方向。
 
-Fate AI 后续会引入：
+Floris AI 后续会引入：
 
 - Context Inspector。
 - conversation trimming。
@@ -147,7 +149,7 @@ Lesson 1 的 event log 是这个方向的最小起点。
 
 ## Lesson 1 在整个演进中的位置
 
-Lesson 1 是 Fate AI 从 0 到 1 的第一块地基。它要故意小，但不能是一次性 demo。
+Lesson 1 是 Floris AI 从 0 到 1 的第一块地基。它要故意小，但不能是一次性 demo。
 
 它必须保留这些未来接口：
 
@@ -180,7 +182,7 @@ Amp Oracle 给我们的启发是：不是所有请求都该用同一个模型。
 
 ### Pi
 
-Pi 的关键启发是 session 是可恢复的事件记录，不只是最终消息列表。Pi session 使用 JSONL，并通过 `id` / `parentId` 支持树状结构。这对 Fate AI 的 branch 设计很重要。
+Pi 的关键启发是 session 是可恢复的事件记录，不只是最终消息列表。Pi session 使用 JSONL，并通过 `id` / `parentId` 支持树状结构。这对 Floris AI 的 branch 设计很重要。
 
 Lesson 1 不做完整 branch tree，但 event 结构要避免只能表达线性消息。最小实现里每个 event 要有：
 
@@ -206,7 +208,7 @@ Lesson 1 采用内部 typed hooks，不做用户脚本。原因是第一阶段�
 
 Anthropic Messages API 有明确的 `stop_reason`，例如 `tool_use`、`end_turn`、`max_tokens`。OpenAI function calling / Responses API 会通过结构化 tool call 表示模型需要外部工具。
 
-不同 provider 的 API shape 不一样，但 agent loop 不应该直接依赖 provider 原始返回。Lesson 1 要定义 Fate AI 内部统一事件：
+不同 provider 的 API shape 不一样，但 agent loop 不应该直接依赖 provider 原始返回。Lesson 1 要定义 Floris AI 内部统一事件：
 
 - `text_delta`
 - `tool_call_done`
@@ -311,13 +313,13 @@ packages/agent-runtime/
 - 在 `provider.type.ts` 补齐本小节需要的 `ModelProvider`、`ModelRequest`、`ModelEvent` 类型。
 - 在 `prompt.type.ts` 补齐 `PromptTemplate`、`SystemPromptRef`、`PromptStore` 类型。
 - 在 `agent.type.ts` 明确 `AgentProfile.systemPrompt` 和 `AgentRoleDefinition.systemPrompt`，不要继续用 `instructions: string[]` 混放 role prompt。
-- 基于 Amp Code system prompt 建立 Fate AI 默认 prompt。能直接对应 Fate AI 的内容直接使用；Amp 专属品牌、工具名、tool schema、Amp 官网说明等不对应内容改写成 Fate AI runtime 语义。
+- 基于 Amp Code system prompt 建立 Floris AI 默认 prompt。能直接对应 Floris AI 的内容直接使用；Amp 专属品牌、工具名、tool schema、Amp 官网说明等不对应内容改写成 Floris AI runtime 语义。
 - 定义 `agent.config.ts` 如何提供 `apiUrl`、model mapping 和 role fallback。
 
 设计模式选择：
 
 - `ModelProvider` 使用 Strategy。`AgentLoop` 只依赖这个接口，不关心 Anthropic、OpenAI 或本地模型。
-- 真实 provider 接入时使用 Adapter。不同 SDK 的 request、response、stop reason、tool call shape 都转成 Fate AI 内部 `ModelRequest` / `ModelEvent`。
+- 真实 provider 接入时使用 Adapter。不同 SDK 的 request、response、stop reason、tool call shape 都转成 Floris AI 内部 `ModelRequest` / `ModelEvent`。
 - DEBUG 日志使用 Decorator 思路包装 `ModelProvider`。真实网络请求、日志、token usage 统计都围绕 provider boundary 观察。
 - `ModelEvent` stream 使用 `AsyncIterable`。Provider 可以流式输出文本、tool call、usage 和 done event。
 - 模型返回的 tool call 按 Command 思路处理：provider 只产出 `{ id, name, input }`，执行交给 `ToolRegistry`。
@@ -434,10 +436,10 @@ Prompt 管理最小规则：
 
 - Amp 的 `Agency`、`Conventions & Rules`、`AGENTS.md file`、`Context`、`Communication` 是 shared agent principles，进入所有默认 role prompt。
 - Amp 的 `Task Management` 进入 `coder` prompt，因为 Lesson 1 的默认执行 agent 承担任务推进和状态更新。
-- Amp 的 `Oracle` 进入 `oracle` prompt，但改成 Fate AI 的显式 `@oracle` / visible handoff 语义，不写成隐藏后台工具。
-- `reviewer` 和 `explorer` 使用 shared principles，并增加 Fate AI 的 read-only review / exploration role 约束。
-- Amp 里与具体工具实现绑定的内容，例如 `todo_write`、`finder`、`Read`、`edit_file`、tool JSON schema、Amp Thread URL、查询 Amp 官网等，不直接写入 Fate AI 默认 prompt。对应能力后续通过 tool registry、hook、UI 和 docs 表达。
-- 默认 prompt 不能把 Fate AI 产品永久限定为 coding agent。coding 只写在 `coder` role 中，shared prompt 只说明运行在 Fate AI agent runtime 内。
+- Amp 的 `Oracle` 进入 `oracle` prompt，但改成 Floris AI 的显式 `@oracle` / visible handoff 语义，不写成隐藏后台工具。
+- `reviewer` 和 `explorer` 使用 shared principles，并增加 Floris AI 的 read-only review / exploration role 约束。
+- Amp 里与具体工具实现绑定的内容，例如 `todo_write`、`finder`、`Read`、`edit_file`、tool JSON schema、Amp Thread URL、查询 Amp 官网等，不直接写入 Floris AI 默认 prompt。对应能力后续通过 tool registry、hook、UI 和 docs 表达。
+- 默认 prompt 不能把 Floris AI 产品永久限定为 coding agent。coding 只写在 `coder` role 中，shared prompt 只说明运行在 Floris AI agent runtime 内。
 
 API key 存储：
 

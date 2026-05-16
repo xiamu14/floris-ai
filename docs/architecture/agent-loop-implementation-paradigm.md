@@ -2,9 +2,9 @@
 
 ## 目标
 
-本文档定义 Fate AI agent runtime，尤其是 `agent-loop.ts` 相关代码的实现范式。它用于约束后续实现方式，避免 agent loop 演变成难测试、难扩展的大型 class 或混乱的流程脚本。
+本文档定义 Floris AI agent runtime，尤其是 `agent-loop.ts` 相关代码的实现范式。它用于约束后续实现方式，避免 agent loop 演变成难测试、难扩展的大型 class 或混乱的流程脚本。
 
-结论：Fate AI 采用 **data-driven + event-driven 的 TypeScript 风格**，核心状态机尽量函数式，外部依赖使用 interface 边界。
+结论：Floris AI 采用 **data-driven + event-driven 的 TypeScript 风格**，核心状态机尽量函数式，外部依赖使用 interface 边界。
 
 ## 参考对比
 
@@ -43,7 +43,7 @@ Claude Code 的 hooks 暴露出明显的 event lifecycle：
 - `Stop` 可以阻止 agent 过早停止。
 - `UserPromptSubmit` 可以注入上下文或阻止用户输入。
 
-Fate AI 采用同类思路，但第一阶段先做内部 typed hooks，不开放用户脚本。
+Floris AI 采用同类思路，但第一阶段先做内部 typed hooks，不开放用户脚本。
 
 ## 总体范式
 
@@ -83,6 +83,14 @@ AgentProfile / AgentEvent / Message / ToolCall
 - `agent-loop.ts` 不能定义 `AgentProfile`、`LoopState`、`RunTurnInput`、`RunTurnResult`、`LoopStopReason` 等类型。
 - provider、tool、hook、context、session、permission 相关 contract 都先进入对应 `.type.ts` 文件。
 - 类型文件不能包含运行时代码。
+
+## frameworkContext 处理横切依赖
+
+随着 provider compatibility、tool artifact store、token estimator、permission gate、logger 等横切依赖增加，单纯逐级传参会让函数签名膨胀，也容易漏传字段。
+
+Floris runtime 引入 `frameworkContext` 作为 typed context 机制。它不是全局 singleton，也不是大业务状态对象。每次 run / request / tool call 显式创建 context，再按场景派生小 context，例如 `ToolExecutionContext`、`ProviderRequestContext`、`HookExecutionContext`。
+
+完整设计见 `docs/architecture/framework-context.md`。
 
 ## Agent 差异用数据表达
 

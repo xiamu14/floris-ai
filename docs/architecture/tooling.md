@@ -2,7 +2,7 @@
 
 ## 当前结论
 
-Fate AI 第一阶段 TypeScript runtime 使用：
+Floris AI 第一阶段 TypeScript runtime 使用：
 
 - package manager：Bun
 - lint / format：Ultracite + Biome
@@ -68,7 +68,7 @@ Ultracite 是面向 AI coding workflow 的 lint / format preset。它的价值�
 
 不足：
 
-- 对 Fate AI 当前阶段来说，Zed + Biome 的配置路径更明确。
+- 对 Floris AI 当前阶段来说，Zed + Biome 的配置路径更明确。
 - Ultracite + Biome 的默认 preset 更直接，不需要额外设计 Oxlint / Oxfmt 配置。
 - Lesson 1 更需要稳定、可解释、少配置的工具链，不需要先追求极限性能。
 

@@ -1,8 +1,8 @@
-# Fate AI Agent 开发协作说明
+# Floris AI Agent 开发协作说明
 
 ## 项目目标
 
-Fate AI 是一个 macOS desktop app，核心交互是 chat。第一阶段聚焦 code agent：用户通过 chat 发起任务，agent 可以理解项目、读写代码、运行命令、解释修改，并在用户参与下逐步完成软件开发。
+Floris AI 是一个 macOS desktop app，核心交互是 chat。第一阶段聚焦 code agent：用户通过 chat 发起任务，agent 可以理解项目、读写代码、运行命令、解释修改，并在用户参与下逐步完成软件开发。
 
 产品参考方向：
 
@@ -69,7 +69,7 @@ Fate AI 是一个 macOS desktop app，核心交互是 chat。第一阶段聚焦 
 
 ## 目录结构
 
-Fate AI 使用 monorepo。顶层目录必须表达产品分层：macOS desktop app 是用户入口，agent runtime 是可复用能力包，docs 是共同开发和教学资料。
+Floris AI 使用 monorepo。顶层目录必须表达产品分层：macOS desktop app 是用户入口，agent runtime 是可复用能力包，docs 是共同开发和教学资料。
 
 当前目录结构：
 
@@ -148,7 +148,7 @@ Runtime schema 规则：
   - 已有生态工具只能消费 Zod schema。
   - 某个边界已经由外部库返回 Zod schema，转换成本高且收益低。
 - 不允许同一份 contract 同时维护 ArkType 和 Zod 两套 schema，除非是明确的 adapter 层。
-- ArkType 是 Fate AI 内部 contract 的默认 runtime schema；provider adapter 负责把内部 schema 转成外部 API 需要的 schema shape。
+- ArkType 是 Floris AI 内部 contract 的默认 runtime schema；provider adapter 负责把内部 schema 转成外部 API 需要的 schema shape。
 
 Runtime factory 和错误处理规则：
 
@@ -175,7 +175,7 @@ Runtime factory 和错误处理规则：
 
 ## 双层架构
 
-Fate AI 第一阶段采用明确的双层架构：**SwiftUI macOS App + TypeScript Agent Runtime**。
+Floris AI 第一阶段采用明确的双层架构：**SwiftUI macOS App + TypeScript Agent Runtime**。
 
 这只是开发期架构分层，不是最终用户感知的产品形态。最终形态必须是一个独立打包、可分发、可安装的 macOS desktop app。TypeScript agent runtime 应作为 app 内置 runtime 随 macOS app 一起分发，用户不需要理解 monorepo、TypeScript package 或单独启动 runtime。
 
@@ -265,7 +265,7 @@ Bridge 不能承载业务决策。它只负责进程生命周期、消息编码�
 最终产品要求：
 
 - 提供独立 macOS app bundle。
-- 用户通过一个 app 启动 Fate AI。
+- 用户通过一个 app 启动 Floris AI。
 - TypeScript runtime、必要的 JS bundle、工具配置和资源随 app 打包。
 - 首次启动不要求用户手动安装 Bun、Node 或运行命令。
 - 开发期 TypeScript tooling 限定在 `packages/agent-runtime` 内；分发期必须通过 build pipeline 产出 app 内可运行的 runtime artifact。
@@ -489,64 +489,20 @@ API key 第一阶段先使用平台无关的本地加密配置保存，不绑定
 
 第一阶段先实现显式 `@agent` 调用和 agent profile 配置。不要实现 agent 自主选择另一个 agent，也不要实现复杂 multi-agent 工作流。后续可以在用户确认下，让 `@coder` 请求 `@oracle` 做 review 或计划。
 
-第二阶段如果实现 multi-agent 任务拆分，必须优先绑定到可见 branch 和独立窗口，让用户理解每个 agent 正在做什么、基于什么 context、会修改哪些文件。不要把复杂工作放进用户看不见的后台流程。
+后续 multi-agent 是 Floris 的差异化方向，不以隐藏后台 subagent 为主设计。multi-agent 任务拆分必须优先绑定到可见 branch、shared work graph 和独立窗口，让用户理解每个 agent 正在做什么、基于什么 context、会修改哪些文件。不同 agent 可以协作沟通，并能在权限允许时跨 session 补充 context，但复杂工作不能放进用户看不见的后台流程。
 
 ## 课程规划
 
-### Lesson 1: MVP Agent Loop
+课程规划由独立文档维护，AGENTS.md 只保留入口，避免路线在多个文件里重复导致漂移。
 
-Lesson 1 的目标是实现一个能跑通的 TypeScript agent runtime MVP：目录结构清楚，agent loop 能发送 user message、调用真实 AI API provider、执行 `echo_tool`、处理停止条件、记录事件。学习本项目时默认已经提供可用 AI API 平台，不用替代真实模型调用的 demo 路径。
+- 总路线：[docs/plans/lesson-roadmap.md](docs/plans/lesson-roadmap.md)
+- Lesson 1 实现计划：[docs/plans/lesson1-mvp-agent-loop.md](docs/plans/lesson1-mvp-agent-loop.md)
+- Lesson 1 教学规划：[docs/teaching/lesson1/README.md](docs/teaching/lesson1/README.md)
+- Lesson 1 教学笔记：[docs/teaching/lesson1/notes.md](docs/teaching/lesson1/notes.md)
+- Lesson 1 实现拆解：[docs/teaching/lesson1/implementation-breakdown.md](docs/teaching/lesson1/implementation-breakdown.md)
+- Lesson 1 tool 架构：[docs/teaching/lesson1/tool-architecture.md](docs/teaching/lesson1/tool-architecture.md)
 
-Lesson 1 拆成 7 个小节：
-
-1. Runtime 目录结构和基础工具链
-   - 建立 `packages/agent-runtime` package。
-   - 建立 `src/types` 和 `src/prompts`，但不在 1.1 一次写完所有类型。
-   - 测试要求：tooling 命令能跑，placeholder tests 可执行。
-
-2. ModelProvider、Prompt 和 provider boundary
-   - 定义平台无关的 `ModelProvider`、`ModelRequest`、`ModelEvent`。
-   - 定义 `AgentProfile.systemPrompt`、`PromptTemplate`、`SystemPromptRef` 和默认 agent role system prompt。
-   - 实现 OpenAI-compatible provider adapter，让 MIMO 这类平台走真实 API 调用路径。
-   - 测试要求：provider adapter 映射稳定；agent profile 必须显式引用 system prompt。
-
-3. ToolRegistry 最小实现
-   - 定义 `Tool`、`ToolInputSchema`、`ToolResult`。
-   - 实现 `echo_tool`。
-   - 测试要求：tool call 能成功返回结果，未知 tool 返回可恢复错误。
-
-4. HookRunner MVP
-   - 实现内部 typed hooks，不做用户脚本系统。
-   - 第一版支持 `SessionStart`、`BeforeContextBuild`、`AfterContextBuild`、`PreToolUse`、`PostToolUse`、`Stop`、`UserInterrupt`。
-   - 测试要求：hook 调用顺序可断言；`Stop` hook 可以要求 agent 继续一轮或返回停止原因。
-
-5. Context、Prompt 和 Memory 最小接入
-   - 从 `AgentProfile.systemPrompt` 解析 system prompt，并作为独立 context section。
-   - 读取 `AGENTS.md` 作为 project instructions。
-   - 用内存版 `MemoryStore` 提供少量 memory entry。
-   - 拼接当前 branch 的最近 message。
-   - 测试要求：context builder 输出 section 列表和 token estimate stub；用户中断不会写入错误状态。
-
-6. AgentLoop MVP
-   - 实现 `runTurn()`：构建 request、消费 provider events、执行 tool、把 tool result 放回下一轮。
-   - 终止条件先支持 `assistant_done`、`tool_use`、`max_iterations`、`provider_error`、`user_interrupted`。
-   - 测试要求：无 tool 直接结束；一次 tool call 后结束；超过 `max_iterations` 停止。
-
-7. Lesson 1 总结和可运行 demo
-   - 提供 CLI demo：输入一条 user message，通过真实 OpenAI-compatible provider 运行完整 agent loop。
-   - 记录 session events 到 in-memory session store，JSONL persistence 留到后续 lesson。
-   - 总结哪些是 MVP 简化版，列出下一课要深化的点。
-   - 测试要求：`bun run demo` 可以观察真实 provider request、provider event 和 token usage；单元测试覆盖主要 loop path。
-
-Lesson 1 之后再拆章节深入：
-
-- Lesson 2：真实 provider adapter 和多模型 agent profile。
-- Lesson 3：permission gate 和 `PolicyReviewer`。
-- Lesson 4：session persistence、branch tree 和恢复。
-- Lesson 5：Context Inspector、conversation trimming、compaction。
-- Lesson 6：Memory Library 和 memory selection。
-- Lesson 7：SwiftUI chat UI 接入 runtime。
-- Lesson 8：显式 `@agent` 调用和多 agent UI。
+新增、调整或完成课程小节时，先更新对应 lesson 文档，再按需在这里补充入口链接，不在 AGENTS.md 里复制章节细节。
 
 Hooks 设计先保持内部 typed hooks。架构文档必须记录每个 hook 的触发时机、输入输出、是否允许修改 context、是否允许阻止流程。将来开放 extension 或用户脚本时，以这些文档作为兼容依据，不能临时改变 hook 语义。
 
@@ -769,7 +725,7 @@ HH:mm:ss sss[groupName][eventName] message
 
 ## 当前阶段的架构判断
 
-Fate AI 不应该一开始追求复杂 agent framework。更好的路线是：
+Floris AI 不应该一开始追求复杂 agent framework。更好的路线是：
 
 1. 先做清楚的 chat + agent loop + tool registry。
 2. 再做 session persistence、branch tree 和 context builder。
@@ -778,3 +734,15 @@ Fate AI 不应该一开始追求复杂 agent framework。更好的路线是：
 5. 最后评估是否需要基于可见 branch 的 agent 协作。
 
 这样可以让每一步都能运行、能讲清楚、能测试，也方便人和 agent 一起持续改进。
+
+## graphify
+
+This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
+
+When the user types `/graphify`, invoke the `skill` tool with `skill: "graphify"` before doing anything else.
+
+Rules:
+- ALWAYS read graphify-out/GRAPH_REPORT.md before reading any source files, running grep/glob searches, or answering codebase questions. The graph is your primary map of the codebase.
+- IF graphify-out/wiki/index.md EXISTS, navigate it instead of reading raw files
+- For cross-module "how does X relate to Y" questions, prefer `graphify query "<question>"`, `graphify path "<A>" "<B>"`, or `graphify explain "<concept>"` over grep — these traverse the graph's EXTRACTED + INFERRED edges instead of scanning files
+- After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).

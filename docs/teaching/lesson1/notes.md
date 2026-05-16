@@ -43,6 +43,7 @@ Lesson 1.4 之后还没有真正完成。context/session 当前只是为了支�
 - PermissionGate 和 PolicyReviewer。
 - MemoryStore、memory selection、compaction。
 - file tools、shell tools、git tools。
+- token-aware tool output envelope、raw artifact、tool output filtering。
 - SwiftUI bridge 和 UI 展示。
 
 学习者应该把当前 tag 当成 Lesson 1.1 到 Lesson 1.3 的学习完成点：先理解 runtime skeleton、provider boundary、tool registry，再通过 DEBUG 日志观察最小 agent loop。后续再继续补 HookRunner、session、context window、permission、memory。
@@ -159,6 +160,52 @@ provider tool_call_done
 - 只有 `echo_tool`。
 - 没有 file / shell / git tools。
 - 没有 permission check。
+- `ToolResult` 还没有区分 summary / display / context / rawRef / metrics。
+- 还没有 tool output 的 token budget、raw artifact、redaction 和 context guard。
+
+### 下一阶段 Tool Architecture
+
+Lesson 1.3 后续要从 `echo_tool` 升级到真正支持 general agent 和 coding agent 的 tool layer。完整设计见：
+
+- `docs/teaching/lesson1/tool-architecture.md`
+
+核心注意点：
+
+- Tool 不是一组普通函数，而是 runtime contract。Agent loop 只能通过 `ToolRegistry` 执行 tool。
+- Tool result 不能直接把 stdout、HTTP response、git diff、搜索结果全量塞进下一轮 model context。
+- 每个真实 tool 都要返回结构化 envelope：`summary`、`display`、`context`、`rawRef`、`artifacts`、`metrics`。
+- `summary` 用于 chat UI 和 event list；`context` 是给 model 的压缩内容；`rawRef` 指向完整输出。
+- token 优化必须内置，不依赖用户提醒 agent 少输出。
+
+两层过滤：
+
+1. Tool 自身过滤：按领域做最合适的摘要。`git_status` 返回 branch 和 changed files 统计；`git_diff` 默认返回 file stats 和 scoped hunks；`http_request` 按 content type 摘要；`run_command` 按 test / lint / build / git 等类型提取重点。
+2. Runtime 过滤：`PostToolUse` 记录 raw output、optimized output、token metrics 和省略原因；`BeforeContextBuild` / context budget guard 再决定哪些 tool result 能进入 model context。
+
+建议实现清单：
+
+| Tool | 用途 |
+| --- | --- |
+| `list_files` | 列 workspace 结构 |
+| `read_file` | 读取文件片段 |
+| `search_files` | 搜索内容 |
+| `run_command` | 执行受控命令 |
+| `get_command_status` | 查询长命令状态 |
+| `get_command_output` | 分页读取长输出 |
+| `stop_command` | 停止长命令 |
+| `apply_patch` | patch 修改文件 |
+| `git_status` | 查看 git 状态 |
+| `git_diff` | 查看 diff 摘要和 scoped diff |
+| `list_tasks` | 发现 package scripts / Makefile / justfile |
+| `run_task` | 跑 test / lint / build / dev |
+| `http_request` | smoke test 本地服务或 API |
+
+自定义和三方库取舍：
+
+- 自定义：tool envelope、command runner、process store、output optimizer、token metrics、permission metadata、artifact store。
+- 三方库：ignore rules、glob matching、diff / patch parsing、MIME detection。
+- 暂不使用 `execa`、`axios`、`shelljs`、`simple-git`。
+- 不提供 `rtk` adapter。Floris 内置等效输出优化策略，便于调试、验证和观察策略对 LLM 的影响。
 
 ## Lesson 1.4 HookRunner
 

@@ -1,6 +1,6 @@
-# Fate AI macOS Desktop
+# Floris AI macOS Desktop
 
-This app is the native macOS shell for Fate AI.
+This app is the native macOS shell for Floris AI.
 
 First-stage responsibilities:
 

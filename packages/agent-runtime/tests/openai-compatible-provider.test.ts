@@ -202,6 +202,260 @@ describe("OpenAI-compatible provider", () => {
     ]);
   });
 
+  it("preserves provider reasoning content on tool call events", async () => {
+    const provider = new OpenAICompatibleModelProvider(
+      {
+        providerId: "compatible",
+        providerConfig: {
+          kind: "openai",
+          apiUrl: "https://api.compatible.example/v1",
+          apiKeyEnvName: "COMPATIBLE_API_KEY",
+        },
+        modelConfig: {
+          providerId: "compatible",
+          modelId: "provider-model",
+        },
+      },
+      {
+        client: createTestClient([], {
+          choices: [
+            {
+              index: 0,
+              logprobs: null,
+              message: {
+                role: "assistant",
+                content: null,
+                refusal: null,
+                reasoning_content: "I should call echo_tool.",
+                tool_calls: [
+                  {
+                    id: "call_1",
+                    type: "function",
+                    function: {
+                      name: "echo_tool",
+                      arguments: JSON.stringify({ text: "hello" }),
+                    },
+                  },
+                ],
+              },
+              finish_reason: "tool_calls",
+            },
+          ],
+        }),
+      }
+    );
+
+    expect(await collect(provider.createMessage(request))).toEqual([
+      {
+        type: "tool_call_done",
+        reasoningContent: "I should call echo_tool.",
+        toolCall: {
+          id: "call_1",
+          name: "echo_tool",
+          input: {
+            text: "hello",
+          },
+        },
+      },
+      {
+        type: "done",
+        stopReason: "tool_use",
+      },
+    ]);
+  });
+
+  it("maps assistant tool calls back to provider messages with string content", async () => {
+    const calls: unknown[] = [];
+    const provider = new OpenAICompatibleModelProvider(
+      {
+        providerId: "compatible",
+        providerConfig: {
+          kind: "openai",
+          apiUrl: "https://api.compatible.example/v1",
+          apiKeyEnvName: "COMPATIBLE_API_KEY",
+        },
+        modelConfig: {
+          providerId: "compatible",
+          modelId: "provider-model",
+        },
+      },
+      {
+        client: createTestClient(calls, {
+          choices: [
+            {
+              index: 0,
+              logprobs: null,
+              message: {
+                role: "assistant",
+                content: "ok",
+                refusal: null,
+              },
+              finish_reason: "stop",
+            },
+          ],
+        }),
+      }
+    );
+
+    await collect(
+      provider.createMessage({
+        ...request,
+        messages: [
+          {
+            role: "user",
+            content: "echo hello",
+          },
+          {
+            role: "assistant",
+            content: "",
+            reasoningContent: "I should call echo_tool.",
+            toolCalls: [
+              {
+                id: "call_1",
+                name: "echo_tool",
+                input: { text: "hello" },
+              },
+            ],
+          },
+          {
+            role: "tool",
+            content: "hello",
+            toolCallId: "call_1",
+          },
+        ],
+      })
+    );
+
+    expect(calls[0]).toMatchObject({
+      messages: [
+        {
+          role: "system",
+          content: "You are a coding agent.",
+        },
+        {
+          role: "user",
+          content: "echo hello",
+        },
+        {
+          role: "assistant",
+          content: "",
+          reasoning_content: "I should call echo_tool.",
+          tool_calls: [
+            {
+              id: "call_1",
+              type: "function",
+              function: {
+                name: "echo_tool",
+                arguments: JSON.stringify({ text: "hello" }),
+              },
+            },
+          ],
+        },
+        {
+          role: "tool",
+          content: "hello",
+          tool_call_id: "call_1",
+        },
+      ],
+    });
+  });
+
+  it("can map tool results as user messages for compatible providers", async () => {
+    const calls: unknown[] = [];
+    const provider = new OpenAICompatibleModelProvider(
+      {
+        providerId: "compatible",
+        providerConfig: {
+          kind: "openai",
+          apiUrl: "https://api.compatible.example/v1",
+          apiKeyEnvName: "COMPATIBLE_API_KEY",
+          compatibility: {
+            toolResultMessageRole: "user",
+          },
+        },
+        modelConfig: {
+          providerId: "compatible",
+          modelId: "provider-model",
+        },
+      },
+      {
+        client: createTestClient(calls, {
+          choices: [
+            {
+              index: 0,
+              logprobs: null,
+              message: {
+                role: "assistant",
+                content: "ok",
+                refusal: null,
+              },
+              finish_reason: "stop",
+            },
+          ],
+        }),
+      }
+    );
+
+    await collect(
+      provider.createMessage({
+        ...request,
+        messages: [
+          {
+            role: "user",
+            content: "echo hello",
+          },
+          {
+            role: "assistant",
+            content: "",
+            toolCalls: [
+              {
+                id: "call_1",
+                name: "echo_tool",
+                input: { text: "hello" },
+              },
+            ],
+          },
+          {
+            role: "tool",
+            content: "hello",
+            toolCallId: "call_1",
+          },
+        ],
+      })
+    );
+
+    expect(calls[0]).toMatchObject({
+      messages: [
+        {
+          role: "system",
+          content: "You are a coding agent.",
+        },
+        {
+          role: "user",
+          content: "echo hello",
+        },
+        {
+          role: "assistant",
+          content: "",
+          tool_calls: [
+            {
+              id: "call_1",
+              type: "function",
+              function: {
+                name: "echo_tool",
+                arguments: JSON.stringify({ text: "hello" }),
+              },
+            },
+          ],
+        },
+        {
+          role: "user",
+          content: "Tool result:\ntool_call_id: call_1\nhello",
+        },
+      ],
+    });
+  });
+
   it("uses an explicitly provided API key when it creates the SDK client", async () => {
     await Promise.resolve();
 

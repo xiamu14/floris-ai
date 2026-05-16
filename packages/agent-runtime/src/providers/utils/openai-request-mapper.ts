@@ -4,18 +4,18 @@ import type {
   ChatCompletionMessageParam,
   ChatCompletionTool,
 } from "openai/resources/chat/completions";
-import type { ModelParameters, ModelRequest } from "../../types/provider.type";
+import type { ModelRequest } from "../../types/provider.type";
+import type { ProviderRequestContext } from "../../types/provider-request-context.type";
 
 export function toOpenAIChatCompletionRequest(
   request: ModelRequest,
-  modelId: string,
-  modelParameters: ModelParameters | undefined
+  context: ProviderRequestContext
 ): ChatCompletionCreateParamsNonStreaming {
   const body: ChatCompletionCreateParamsNonStreaming = {
-    model: modelId,
-    messages: toOpenAIMessages(request),
+    model: context.modelId,
+    messages: toOpenAIMessages(request, context),
     stream: false,
-    ...toOpenAIParameters(modelParameters),
+    ...toOpenAIParameters(context.modelParameters),
     ...toOpenAIParameters(request.parameters),
     ...toOpenAIMaxTokens(request),
   };
@@ -28,7 +28,13 @@ export function toOpenAIChatCompletionRequest(
   return body;
 }
 
-function toOpenAIMessages(request: ModelRequest): ChatCompletionMessageParam[] {
+function toOpenAIMessages(
+  request: ModelRequest,
+  context: ProviderRequestContext
+): ChatCompletionMessageParam[] {
+  const toolResultMessageRole =
+    context.compatibility?.toolResultMessageRole ?? "tool";
+
   return [
     ...request.system.map((content) => ({
       role: "system" as const,
@@ -36,6 +42,13 @@ function toOpenAIMessages(request: ModelRequest): ChatCompletionMessageParam[] {
     })),
     ...request.messages.map((message) => {
       if (message.role === "tool") {
+        if (toolResultMessageRole === "user") {
+          return {
+            role: "user" as const,
+            content: formatToolResultAsUserMessage(message),
+          };
+        }
+
         const toolMessage: ChatCompletionMessageParam = {
           role: "tool" as const,
           content: message.content,
@@ -46,9 +59,14 @@ function toOpenAIMessages(request: ModelRequest): ChatCompletionMessageParam[] {
       }
 
       if (message.role === "assistant" && message.toolCalls) {
-        const assistantMessage: ChatCompletionAssistantMessageParam = {
+        const assistantMessage: ChatCompletionAssistantMessageParam & {
+          reasoning_content?: string;
+        } = {
           role: "assistant",
-          content: message.content || null,
+          content: message.content || "",
+          ...(message.reasoningContent
+            ? { reasoning_content: message.reasoningContent }
+            : {}),
           tool_calls: message.toolCalls.map((toolCall) => ({
             id: toolCall.id,
             type: "function",
@@ -65,9 +83,20 @@ function toOpenAIMessages(request: ModelRequest): ChatCompletionMessageParam[] {
       return {
         role: message.role,
         content: message.content,
-      };
+      } as ChatCompletionMessageParam;
     }),
   ];
+}
+
+function formatToolResultAsUserMessage(message: {
+  content: string;
+  toolCallId?: string;
+}): string {
+  return [
+    "Tool result:",
+    `tool_call_id: ${message.toolCallId ?? "unknown"}`,
+    message.content,
+  ].join("\n");
 }
 
 function toOpenAITools(
@@ -88,7 +117,7 @@ function toOpenAITools(
 }
 
 function toOpenAIParameters(
-  parameters: ModelParameters | undefined
+  parameters: ProviderRequestContext["modelParameters"]
 ): Partial<ChatCompletionCreateParamsNonStreaming> {
   if (!parameters) {
     return {};

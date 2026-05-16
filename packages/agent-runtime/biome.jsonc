@@ -1,4 +1,7 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.4.14/schema.json",
-  "extends": ["ultracite/core"]
+  "extends": ["ultracite/core"],
+  "files": {
+    "includes": ["src", "tests", "!src/demo/case"]
+  }
 }

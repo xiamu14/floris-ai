@@ -11,6 +11,9 @@ export function createMimoAgentConfig(env: NodeJS.ProcessEnv = process.env) {
         apiUrl: env.MIMO_BASE_URL ?? MIMO_PLATFORM_BASE_URL,
         apiUrlEnvName: "MIMO_BASE_URL",
         apiKeyEnvName: "MIMO_API_KEY",
+        compatibility: {
+          toolResultMessageRole: "user",
+        },
       },
     },
     models: {

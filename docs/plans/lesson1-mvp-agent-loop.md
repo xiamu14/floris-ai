@@ -28,6 +28,8 @@ lesson1-agent-loop-basic-debug
 
 - `docs/teaching/lesson1/README.md`
 - `docs/architecture/agent-loop-implementation-paradigm.md`
+- `docs/teaching/lesson1/tool-architecture.md`
+- `docs/plans/lesson-roadmap.md`
 
 ## 实现目标
 
@@ -87,6 +89,7 @@ Lesson 1 完整计划不实现：
 - 完整多 provider 体系。
 - SwiftUI。
 - 真实权限审核 agent。
+- Permission Request / user approval flow。
 - SQLite / SwiftData。
 - JSONL persistence。
 - 真实权限策略。
@@ -217,7 +220,7 @@ Lesson 1 固定为 7 个小节。README、plan、notes、implementation breakdow
 设计模式选择：
 
 - `ModelProvider` 使用 Strategy。`AgentLoop` 只依赖这个接口，不关心 Anthropic、OpenAI 或本地模型。
-- 真实 provider 接入时使用 Adapter。不同 SDK 的 request、response、stop reason、tool call shape 都转成 Fate AI 内部 `ModelRequest` / `ModelEvent`。
+- 真实 provider 接入时使用 Adapter。不同 SDK 的 request、response、stop reason、tool call shape 都转成 Floris AI 内部 `ModelRequest` / `ModelEvent`。
 - DEBUG provider wrapper 使用 Decorator 思路观察真实请求。真实网络请求、日志、token usage 都围绕 provider boundary 展示。
 - `ModelEvent` stream 使用 `AsyncIterable`。Provider 可以流式输出 `text_delta`、`tool_call_done`、`usage`、`done`、`error`，UI 和 session 后续都能逐步消费。
 - 模型返回的 tool call 按 Command 思路处理：provider 只产出 `{ id, name, input }`，执行交给 `ToolRegistry`。
@@ -351,18 +354,18 @@ Factory 和 provider 的边界：
 Prompt 来源和映射规则：
 
 - 参考来源：Amp Code System Prompt 2025-10-25 gist。
-- 能对应 Fate AI 当前设计的内容直接进入默认 prompt，包括 Agency、Conventions & Rules、AGENTS.md file、Context、Communication。
+- 能对应 Floris AI 当前设计的内容直接进入默认 prompt，包括 Agency、Conventions & Rules、AGENTS.md file、Context、Communication。
 - Amp 的 Task Management 进入 `coder` prompt，用于指导默认执行 agent 做任务拆分和状态更新。
 - Amp 的 Oracle 进入 `oracle` prompt，用于显式 `@oracle` 或 visible handoff，不实现隐藏后台 oracle。
 - Amp 专属品牌、Sourcegraph/Amp 说明、具体工具名、tool JSON schema、Amp 官网查询说明、环境样例不进入默认 prompt。
-- shared prompt 只能描述 Fate AI agent runtime，不把整个产品永久写成 coding agent。coding 角色限定在 `coder` prompt。
+- shared prompt 只能描述 Floris AI agent runtime，不把整个产品永久写成 coding agent。coding 角色限定在 `coder` prompt。
 
 设计要求：
 
 - agent loop 只能依赖 `ModelProvider`，不能直接依赖具体 SDK。
 - `ModelProvider.createMessage()` 返回 `AsyncIterable<ModelEvent>`，不要一次性返回完整 response。
 - OpenAI-compatible 真实 provider 使用官方 `openai` SDK，第三方 OpenAI-compatible 平台通过 `apiUrl` / SDK `baseURL` 接入。
-- provider adapter 负责把 SDK response 转成 Fate AI 内部事件，agent loop 不处理 SDK 原始对象。
+- provider adapter 负责把 SDK response 转成 Floris AI 内部事件，agent loop 不处理 SDK 原始对象。
 - `tool_call_delta` 这类 provider 原始 streaming 细节不进入 agent loop。后续 streaming adapter 内部完成 delta 拼接。
 - Provider 不负责 tool 执行、permission、hook、session 写入或 API key 存储。
 - Lesson 1 使用 env 读取 MIMO API key。后续真实产品可以通过 `SecretStore` adapter 替换 env 读取；runtime 不直接依赖 macOS Keychain。
@@ -419,18 +422,54 @@ Lesson 1 的 `ModelEvent`：
 - 定义 `Tool`、`ToolExecutionContext`、`ToolResult`。
 - 实现 `ToolRegistry`。
 - 实现 `echo_tool`。
+- 为下一步真实 coding agent tools 定义 token-aware tool architecture。
 
 设计要求：
 
 - agent loop 不 import 具体 tool。
 - 未知 tool 返回结构化错误。
 - tool result 可写入 event log。
+- tool result 不能只是一段字符串。后续真实 tool 必须区分 `summary`、`display`、`context`、`rawRef`、`metrics`，避免把命令日志、HTTP body、git diff 这类大输出直接放进 model context。
+- token 优化要内置在 tool layer 和 context pipeline 中，不依赖用户手动要求 agent 少输出。
+
+后续真实 tool layer 的两层过滤：
+
+1. Tool 自身过滤：每个 tool 按自己的领域做输出优化，例如 `git_diff` 输出 file stats 和 scoped hunks，`http_request` 按 content type 摘要，`run_command` 按 test/lint/build/git 等 command kind 提取重点。
+2. Runtime 过滤：`PostToolUse` 记录 raw output、optimized output、token metrics 和省略原因；`BeforeContextBuild` / context budget guard 再决定哪些 tool result 能进入下一轮 model context。
+
+下一批建议实现清单：
+
+| Tool | 用途 | 实现方向 |
+| --- | --- | --- |
+| `list_files` | 列 workspace 结构 | 自定义，配合 ignore / glob 库 |
+| `read_file` | 读取文件片段 | 自定义，内置 offset / limit / bytes cap |
+| `search_files` | 搜索内容 | 优先 `rg --json`，fallback 自定义扫描 |
+| `run_command` | 执行受控命令 | 自定义 `spawn`、process store、output optimizer |
+| `get_command_status` | 查询长命令状态 | 自定义 process store |
+| `get_command_output` | 分页读取长输出 | 自定义 artifact reader |
+| `stop_command` | 停止长命令 | 自定义 process manager |
+| `apply_patch` | patch 修改文件 | 写入策略自定义，parser 可评估三方库 |
+| `git_status` | 查看 git 状态 | 自定义 porcelain parser |
+| `git_diff` | 查看 diff 摘要和 scoped diff | git CLI + diff parser / 自定义 filter |
+| `list_tasks` | 发现 package scripts / Makefile / justfile | 自定义 parser |
+| `run_task` | 跑 test / lint / build / dev | 基于 `run_command` |
+| `http_request` | smoke test 本地服务或 API | 自定义 fetch + content-type summary |
+
+自定义和三方库取舍：
+
+- 自定义：tool envelope、command runner、process store、output optimizer、token metrics、permission metadata、artifact store。这些是 Floris 的核心能力，必须可解释、可测试、可回放。
+- 三方库：ignore rules、glob matching、diff / patch parsing、MIME detection。这些是底层格式问题，不应该消耗项目精力重复实现。
+- 暂不使用 `execa`、`axios`、`shelljs`、`simple-git`。command 执行、安全边界、stdout/stderr 管理和 token 优化都要在 runtime 内部完成。
+- 不提供 `rtk` adapter。Floris 内置等效的输出优化策略，方便调试、验证和观察这些策略对 LLM 行为的影响。
+
+完整设计见 `docs/teaching/lesson1/tool-architecture.md`。
 
 测试：
 
 - 注册并执行 `echo_tool`。
 - 未知 tool 不 crash。
 - tool 抛错后返回可记录错误。
+- 后续真实 tool 必须覆盖输出压缩、raw artifact、token metrics、redaction 和错误路径。
 
 ### Lesson 1.4 HookRunner MVP
 

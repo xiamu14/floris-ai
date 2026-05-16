@@ -13,6 +13,9 @@ describe("MIMO agent config option", () => {
       apiUrl: "https://api.xiaomimimo.com/v1",
       apiUrlEnvName: "MIMO_BASE_URL",
       apiKeyEnvName: "MIMO_API_KEY",
+      compatibility: {
+        toolResultMessageRole: "user",
+      },
     });
     expect(config.models["mimo-v2.5-pro"]).toEqual({
       providerId: "mimo",

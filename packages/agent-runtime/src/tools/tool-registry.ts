@@ -21,11 +21,32 @@ export class InMemoryToolRegistry implements ToolRegistryContract {
     const tool = this.tools.get(name);
 
     if (!tool) {
+      const message = `Tool "${name}" is not registered.`;
+
       return Promise.resolve({
         ok: false,
+        summary: "Unknown tool.",
+        display: message,
+        context: {
+          content: `Tool error: ${message}`,
+          tokenEstimate: Math.ceil(message.length / 4),
+          policy: "include",
+        },
+        artifacts: [],
+        metrics: {
+          rawBytes: new TextEncoder().encode(message).byteLength,
+          contextBytes: new TextEncoder().encode(message).byteLength,
+          estimatedRawTokens: Math.ceil(message.length / 4),
+          estimatedContextTokens: Math.ceil(message.length / 4),
+          reductionRatio: 1,
+          truncated: false,
+          filterId: "registry-error-filter",
+          strategy: "structure_only",
+        },
+        omitted: [],
         error: {
           code: "unknown_tool",
-          message: `Tool "${name}" is not registered.`,
+          message,
           recoverable: true,
         },
       });

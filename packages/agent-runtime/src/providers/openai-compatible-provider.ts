@@ -1,3 +1,6 @@
+import { providerCompatibilityKey } from "../context/context-keys";
+import { createFrameworkContext } from "../context/framework-context";
+import { createProviderRequestContext } from "../context/scenarios/provider-request-context";
 import type {
   ModelEvent,
   ModelParameters,
@@ -23,6 +26,9 @@ export class OpenAICompatibleModelProvider implements ModelProvider {
   private readonly modelId: string;
   private readonly modelParameters: ModelParameters | undefined;
   private readonly providerApiUrl: string;
+  private readonly compatibility:
+    | ProviderFactoryInput["providerConfig"]["compatibility"]
+    | undefined;
 
   constructor(
     input: ProviderFactoryInput,
@@ -34,6 +40,7 @@ export class OpenAICompatibleModelProvider implements ModelProvider {
     this.modelId = input.modelConfig.modelId;
     this.modelParameters = input.modelConfig.parameters;
     this.providerApiUrl = input.providerConfig.apiUrl;
+    this.compatibility = input.providerConfig.compatibility;
   }
 
   async *createMessage(
@@ -46,8 +53,17 @@ export class OpenAICompatibleModelProvider implements ModelProvider {
       const completion = await client.chat.completions.create(
         toOpenAIChatCompletionRequest(
           request,
-          this.modelId,
-          this.modelParameters
+          createProviderRequestContext(
+            this.createProviderFrameworkContext(),
+            this.modelParameters
+              ? {
+                  modelId: this.modelId,
+                  modelParameters: this.modelParameters,
+                }
+              : {
+                  modelId: this.modelId,
+                }
+          )
         ),
         signal ? { signal } : undefined
       );
@@ -79,6 +95,19 @@ export class OpenAICompatibleModelProvider implements ModelProvider {
     );
 
     return this.cachedClient;
+  }
+
+  private createProviderFrameworkContext() {
+    let frameworkContext = createFrameworkContext();
+
+    if (this.compatibility) {
+      frameworkContext = frameworkContext.set(
+        providerCompatibilityKey,
+        this.compatibility
+      );
+    }
+
+    return frameworkContext;
   }
 }
 

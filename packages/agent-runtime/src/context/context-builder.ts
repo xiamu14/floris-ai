@@ -7,7 +7,7 @@ import type {
 export class BasicContextBuilder implements ContextBuilder {
   build(input: ContextBuildInput): Promise<ContextBuildResult> {
     const system = [
-      `You are ${input.profile.displayName}, a ${input.profile.role} agent in Fate AI.`,
+      `You are ${input.profile.displayName}, a ${input.profile.role} agent in Floris AI.`,
       "Use available tools when they are relevant. After a tool result, provide a concise final answer.",
     ];
 

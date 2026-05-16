@@ -23,6 +23,11 @@ export interface ProviderConfig {
   apiUrlEnvName?: string;
   apiKeyEnvName: string;
   apiKeySecretRef?: string;
+  compatibility?: OpenAICompatibleProviderCompatibility;
+}
+
+export interface OpenAICompatibleProviderCompatibility {
+  toolResultMessageRole?: "tool" | "user";
 }
 
 export interface ModelConfig {
@@ -67,6 +72,7 @@ export interface ModelRequest {
 export interface ModelMessage {
   role: "user" | "assistant" | "tool";
   content: string;
+  reasoningContent?: string;
   toolCallId?: string;
   toolCalls?: ModelToolCall[];
 }
@@ -92,6 +98,7 @@ export interface ModelTextDeltaEvent {
 export interface ModelToolCallDoneEvent {
   type: "tool_call_done";
   toolCall: ModelToolCall;
+  reasoningContent?: string;
 }
 
 export interface ModelUsageEvent {
@@ -126,6 +133,9 @@ export interface ModelProviderError {
   code: string;
   message: string;
   retryable: boolean;
+  status?: number;
+  requestId?: string;
+  details?: unknown;
 }
 
 export interface ProviderFactoryInput {

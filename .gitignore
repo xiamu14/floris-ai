@@ -2,3 +2,6 @@ node_modules
 dist
 coverage
 .DS_Store
+packages/agent-runtime/src/demo/case/
+.codex/
+graphify-out/

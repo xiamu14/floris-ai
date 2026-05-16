@@ -3,6 +3,7 @@ import type { ContextBuilder } from "./context.type";
 import type { ModelProvider } from "./provider.type";
 import type { SessionStore } from "./session.type";
 import type { ToolRegistry } from "./tool.type";
+import type { ToolOutputArtifactStore } from "./tool-output.type";
 
 export type LoopStopReason =
   | "assistant_done"
@@ -26,6 +27,7 @@ export interface RunTurnInput {
   profile: AgentProfile;
   threadId: string;
   branchId: string;
+  workspacePath?: string;
   userMessage: string;
   signal?: AbortSignal;
   options?: AgentRunOptions;
@@ -43,6 +45,8 @@ export interface RunTurnResult {
 export interface AgentLoopDeps {
   provider: ModelProvider;
   toolRegistry: ToolRegistry;
+  toolOutputArtifactStore?: ToolOutputArtifactStore;
+  toolContextMaxTokens?: number;
   hookRunner?: unknown;
   contextBuilder: ContextBuilder;
   sessionStore?: SessionStore;

@@ -1,4 +1,10 @@
+import type { RunContext } from "./framework-context.type";
 import type { ModelToolDefinition } from "./provider.type";
+import type {
+  ToolOutputArtifactStore,
+  ToolResult,
+  ToolResultPolicy,
+} from "./tool-output.type";
 
 export interface Tool {
   name: string;
@@ -8,27 +14,9 @@ export interface Tool {
 }
 
 export interface ToolExecutionContext {
-  threadId: string;
-  branchId: string;
-}
-
-export type ToolResult = ToolSuccessResult | ToolErrorResult;
-
-export interface ToolSuccessResult {
-  ok: true;
-  content: string;
-  data?: unknown;
-}
-
-export interface ToolErrorResult {
-  ok: false;
-  error: ToolExecutionError;
-}
-
-export interface ToolExecutionError {
-  code: string;
-  message: string;
-  recoverable: boolean;
+  run: RunContext;
+  artifactStore?: ToolOutputArtifactStore;
+  resultPolicy: ToolResultPolicy;
 }
 
 export interface ToolRegistry {
@@ -39,3 +27,5 @@ export interface ToolRegistry {
   ): Promise<ToolResult>;
   listDefinitions(allowedTools: string[]): ModelToolDefinition[];
 }
+
+export type { ToolResult } from "./tool-output.type";

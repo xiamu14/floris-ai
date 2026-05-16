@@ -46,7 +46,7 @@ lesson1-agent-loop-basic-debug
 
 `packages/agent-runtime/src/providers/openai-compatible-provider.ts`
 - 使用 OpenAI SDK 调用 OpenAI-compatible 平台。
-- 把 SDK response 转成 Fate AI 内部 `ModelEvent`。
+- 把 SDK response 转成 Floris AI 内部 `ModelEvent`。
 - 缓存 SDK client，避免一次运行重复创建。
 
 `packages/agent-runtime/src/providers/openai-compatible-provider-factory.ts`

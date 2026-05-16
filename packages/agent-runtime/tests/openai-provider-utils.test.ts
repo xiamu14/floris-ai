@@ -24,9 +24,12 @@ describe("OpenAI provider utils", () => {
     };
 
     expect(
-      toOpenAIChatCompletionRequest(request, "configured-model", {
-        maxCompletionTokens: 2048,
-        topP: 0.9,
+      toOpenAIChatCompletionRequest(request, {
+        modelId: "configured-model",
+        modelParameters: {
+          maxCompletionTokens: 2048,
+          topP: 0.9,
+        },
       })
     ).toEqual({
       model: "configured-model",

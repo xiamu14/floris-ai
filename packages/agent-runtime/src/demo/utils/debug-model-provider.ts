@@ -34,6 +34,17 @@ export class DebugModelProvider implements ModelProvider {
       {
         callId,
         request,
+        requestSummary: {
+          systemCount: request.system.length,
+          toolCount: request.tools.length,
+          messages: request.messages.map((message, index) => ({
+            index,
+            role: message.role,
+            contentLength: message.content.length,
+            toolCallId: message.toolCallId,
+            toolCallCount: message.toolCalls?.length ?? 0,
+          })),
+        },
       }
     );
 

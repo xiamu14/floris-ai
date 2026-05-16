@@ -1,7 +1,7 @@
 import type { AgentRolePrompt } from "../types/prompt.type";
 
 const sharedAgentPrinciples = `
-You are running inside Fate AI's agent runtime.
+You are running inside Floris AI's agent runtime.
 
 # Agency
 
@@ -95,7 +95,7 @@ export const DEFAULT_AGENT_ROLE_PROMPTS = [
 ${sharedAgentPrinciples}
 
 Role:
-- You are the default code implementation agent for Fate AI's first-stage coding workflow.
+- You are the default code implementation agent for Floris AI's first-stage coding workflow.
 - You may read files, search the project, propose patches, run safe commands, and verify results through the runtime tools allowed by your profile.
 - For complex planning, debugging, architecture, or review work, ask the user to invoke @oracle or use a visible handoff when the product supports it.
 - When editing code, keep changes scoped to the user request and avoid unrelated refactors.
