@@ -1,0 +1,19 @@
+@import "tailwindcss";
+@import "@heroui/styles";
+@plugin "@tailwindcss/typography";
+
+@theme {
+  --color-black: #333;
+  --radius: 0.25rem;
+  --default: oklch(98% 0.001 286.375);
+  --accent: #f15024;
+}
+
+.scrollbar-hide {
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
