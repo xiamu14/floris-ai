@@ -6,7 +6,12 @@ import {
 import { createFrameworkContext } from "../context/framework-context";
 import { createToolExecutionContext } from "../context/scenarios/tool-execution-context";
 import { defaultToolResultPolicy } from "../tools/tool-result-policy";
+import type { ContextToolResult } from "../types/context.type";
 import type { FrameworkContext } from "../types/framework-context.type";
+import type {
+  PermissionDecision,
+  PermissionRiskTag,
+} from "../types/permission.type";
 import type {
   ModelEvent,
   ModelMessage,
@@ -65,6 +70,7 @@ async function runAgentTurn(
   const usage = createEmptyUsage();
   const frameworkContext = createAgentRunFrameworkContext(deps, input);
   const traceRun = startAgentTraceRun(deps, input, crypto.randomUUID());
+  const toolResultsForContext: ContextToolResult[] = [];
   const maxIterations =
     input.options?.maxIterations ?? input.profile.stopPolicy.maxIterations;
   const shouldForceSynthesis =
@@ -101,6 +107,7 @@ async function runAgentTurn(
       events,
       usage,
       messages,
+      toolResultsForContext,
       traceRun,
       iteration,
       deps.toolRegistry.listDefinitions(input.profile.allowedTools)
@@ -132,6 +139,7 @@ async function runAgentTurn(
       events,
       frameworkContext,
       messages,
+      toolResultsForContext,
       providerResult.toolCalls,
       traceRun,
       iteration
@@ -157,6 +165,7 @@ async function runAgentTurn(
       events,
       usage,
       messages,
+      toolResultsForContext,
       traceRun,
       maxIterations,
       finalMessage
@@ -206,16 +215,24 @@ async function requestModelForIteration(
   events: AgentEvent[],
   usage: TokenUsage,
   messages: ModelMessage[],
+  toolResults: ContextToolResult[],
   traceRun: TraceRunHandle | undefined,
   iteration: number,
   tools: ModelRequest["tools"]
 ) {
   const contextSpan = startContextTraceSpan(traceRun, iteration);
+  const memoryEntries = await deps.memoryStore?.listRelevant({
+    scopes: ["global", "project", "thread"],
+    threadId: input.threadId,
+  });
   const context = await deps.contextBuilder.build({
     profile: input.profile,
     threadId: input.threadId,
     branchId: input.branchId,
     messages,
+    ...(input.workspacePath ? { workspacePath: input.workspacePath } : {}),
+    ...(memoryEntries ? { memoryEntries } : {}),
+    ...(toolResults.length > 0 ? { toolResults } : {}),
   });
   finishContextTraceSpan(contextSpan, context);
   const request: ModelRequest = {
@@ -228,6 +245,13 @@ async function requestModelForIteration(
 
   await appendEvent(deps, events, input, "context_built", {
     tokenEstimate: context.tokenEstimate,
+    sections: context.sections.map((section) => ({
+      kind: section.kind,
+      title: section.title,
+      tokenEstimate: section.tokenEstimate,
+      source: section.source,
+    })),
+    skippedSections: context.skippedSections,
   });
   await appendEvent(deps, events, input, "model_request_started", {
     iteration,
@@ -257,6 +281,7 @@ async function executeToolCallsForIteration(
   events: AgentEvent[],
   frameworkContext: FrameworkContext,
   messages: ModelMessage[],
+  toolResultsForContext: ContextToolResult[],
   toolCalls: ModelToolCall[],
   traceRun: TraceRunHandle | undefined,
   iteration: number
@@ -271,6 +296,11 @@ async function executeToolCallsForIteration(
       traceRun,
       iteration
     );
+    toolResultsForContext.push({
+      toolCallId: toolCall.id,
+      toolName: toolCall.name,
+      context: toolResult.context,
+    });
 
     messages.push({
       role: "tool",
@@ -292,6 +322,7 @@ async function forceSynthesisAfterMaxIterations(
   events: AgentEvent[],
   usage: TokenUsage,
   messages: ModelMessage[],
+  toolResults: ContextToolResult[],
   traceRun: TraceRunHandle | undefined,
   iteration: number,
   previousFinalMessage: string
@@ -309,11 +340,18 @@ async function forceSynthesisAfterMaxIterations(
     },
   ];
   const contextSpan = startContextTraceSpan(traceRun, iteration);
+  const memoryEntries = await deps.memoryStore?.listRelevant({
+    scopes: ["global", "project", "thread"],
+    threadId: input.threadId,
+  });
   const context = await deps.contextBuilder.build({
     profile: input.profile,
     threadId: input.threadId,
     branchId: input.branchId,
     messages: synthesisMessages,
+    ...(input.workspacePath ? { workspacePath: input.workspacePath } : {}),
+    ...(memoryEntries ? { memoryEntries } : {}),
+    ...(toolResults.length > 0 ? { toolResults } : {}),
   });
   finishContextTraceSpan(contextSpan, context);
   const request: ModelRequest = {
@@ -330,6 +368,13 @@ async function forceSynthesisAfterMaxIterations(
   });
   await appendEvent(deps, events, input, "context_built", {
     tokenEstimate: context.tokenEstimate,
+    sections: context.sections.map((section) => ({
+      kind: section.kind,
+      title: section.title,
+      tokenEstimate: section.tokenEstimate,
+      source: section.source,
+    })),
+    skippedSections: context.skippedSections,
   });
   await appendEvent(deps, events, input, "model_request_started", {
     iteration,
@@ -560,6 +605,46 @@ async function executeToolCall(
   });
 
   const toolContext = createToolExecutionContext(frameworkContext);
+  const permissionDecision = await deps.permissionGate?.check({
+    toolCallId: toolCall.id,
+    agentId: input.profile.id,
+    threadId: input.threadId,
+    branchId: input.branchId,
+    toolName: toolCall.name,
+    input: toolCall.input,
+    cwd: input.workspacePath ?? process.cwd(),
+    riskTags: inferPermissionRiskTags(toolCall.name),
+  });
+
+  if (permissionDecision) {
+    await appendEvent(deps, events, input, "permission_checked", {
+      toolCallId: toolCall.id,
+      decision: permissionDecision,
+    });
+  }
+
+  if (permissionDecision && permissionDecision.decision !== "allow") {
+    const deniedResult = createPermissionDeniedToolResult(permissionDecision);
+
+    finishToolTraceSpan(toolSpan, deniedResult);
+    await appendEvent(deps, events, input, "tool_finished", {
+      toolCallId: toolCall.id,
+      result: deniedResult,
+      outputFiltering: {
+        domainFilter: deniedResult.metrics.filterId,
+        strategy: deniedResult.metrics.strategy,
+        rawTokens: deniedResult.metrics.estimatedRawTokens,
+        contextTokens: deniedResult.metrics.estimatedContextTokens,
+        reductionRatio: deniedResult.metrics.reductionRatio,
+        truncated: deniedResult.metrics.truncated,
+        rawRef: deniedResult.artifacts.at(0)?.ref,
+        warnings: [],
+      },
+    });
+
+    return deniedResult;
+  }
+
   const rawResult = await deps.toolRegistry.execute(
     toolCall.name,
     toolCall.input,
@@ -588,6 +673,61 @@ async function executeToolCall(
   });
 
   return policyResult.result;
+}
+
+function inferPermissionRiskTags(toolName: string): PermissionRiskTag[] {
+  if (toolName === "run_command") {
+    return ["shell"];
+  }
+
+  if (toolName === "http_request") {
+    return ["network"];
+  }
+
+  if (
+    toolName === "read_file" ||
+    toolName === "list_files" ||
+    toolName === "search_files" ||
+    toolName === "git_status"
+  ) {
+    return ["read_workspace"];
+  }
+
+  return ["unknown"];
+}
+
+function createPermissionDeniedToolResult(
+  permissionDecision: PermissionDecision
+): ToolResult {
+  const content = `Permission denied: ${permissionDecision.reason}`;
+
+  return {
+    ok: false,
+    summary: "Permission denied",
+    display: content,
+    context: {
+      content,
+      tokenEstimate: Math.ceil(content.length / 4),
+      policy: "include",
+    },
+    artifacts: [],
+    metrics: {
+      rawBytes: content.length,
+      contextBytes: content.length,
+      estimatedRawTokens: Math.ceil(content.length / 4),
+      estimatedContextTokens: Math.ceil(content.length / 4),
+      reductionRatio: 1,
+      truncated: false,
+      filterId: "permission_gate",
+      strategy: "error_only",
+    },
+    omitted: [],
+    error: {
+      code: "permission_denied",
+      message: permissionDecision.reason,
+      recoverable: true,
+    },
+  };
 }
 
 function toolResultToContent(result: ToolResult): string {
@@ -628,7 +768,7 @@ async function appendEvent(
   };
 
   events.push(event);
-  await deps.sessionStore?.append(event);
+  await deps.sessionStore?.appendEvent(event);
 }
 
 function createEmptyUsage(): TokenUsage {

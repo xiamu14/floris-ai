@@ -1,19 +1,28 @@
 import type { AgentEvent } from "../types/runtime.type";
-import type { SessionStore } from "../types/session.type";
+import type { SessionEventQuery, SessionStore } from "../types/session.type";
 
 export class InMemorySessionStore implements SessionStore {
   private readonly events: AgentEvent[] = [];
 
-  append(event: AgentEvent): Promise<void> {
+  appendEvent(event: AgentEvent): Promise<void> {
     this.events.push(event);
     return Promise.resolve();
   }
 
-  list(threadId: string, branchId: string): Promise<AgentEvent[]> {
+  listEvents(query: SessionEventQuery): Promise<AgentEvent[]> {
     return Promise.resolve(
       this.events.filter(
-        (event) => event.threadId === threadId && event.branchId === branchId
+        (event) =>
+          event.threadId === query.threadId && event.branchId === query.branchId
       )
     );
+  }
+
+  append(event: AgentEvent): Promise<void> {
+    return this.appendEvent(event);
+  }
+
+  list(threadId: string, branchId: string): Promise<AgentEvent[]> {
+    return this.listEvents({ threadId, branchId });
   }
 }

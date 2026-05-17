@@ -1,5 +1,7 @@
 import type { AgentProfile } from "./agent.type";
 import type { ContextBuilder } from "./context.type";
+import type { MemoryStore } from "./memory.type";
+import type { PermissionGate } from "./permission.type";
 import type { ModelProvider } from "./provider.type";
 import type { SessionStore } from "./session.type";
 import type { ToolRegistry } from "./tool.type";
@@ -53,8 +55,9 @@ export interface AgentLoopDeps {
   toolContextMaxTokens?: number;
   hookRunner?: unknown;
   contextBuilder: ContextBuilder;
+  memoryStore?: MemoryStore;
   sessionStore?: SessionStore;
-  permissionGate?: unknown;
+  permissionGate?: PermissionGate;
 }
 
 export interface LoopState {

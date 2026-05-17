@@ -7,6 +7,11 @@ import { InMemoryToolOutputArtifactStore } from "../src/tools/tool-output-artifa
 import { InMemoryToolRegistry } from "../src/tools/tool-registry";
 import type { AgentProfile } from "../src/types/agent.type";
 import type {
+  PermissionCheckRequest,
+  PermissionDecision,
+  PermissionGate,
+} from "../src/types/permission.type";
+import type {
   ModelEvent,
   ModelProvider,
   ModelRequest,
@@ -98,6 +103,57 @@ describe("agent loop", () => {
         },
       ],
     });
+  });
+
+  it("checks permission before executing a tool call", async () => {
+    const permissionGate = new RecordingPermissionGate();
+    const provider = new ScriptedTestProvider([
+      {
+        type: "tool_call_done",
+        toolCall: {
+          id: "tool-call-1",
+          name: "echo_tool",
+          input: { text: "hello" },
+        },
+      },
+      {
+        type: "done",
+        stopReason: "tool_use",
+      },
+      {
+        type: "text_delta",
+        text: "done",
+      },
+      {
+        type: "done",
+        stopReason: "end_turn",
+      },
+    ]);
+    const loop = createLoopWithProvider(
+      provider,
+      600,
+      undefined,
+      permissionGate
+    );
+
+    const result = await loop.runTurn({
+      profile: createProfile(),
+      threadId: "thread",
+      branchId: "branch",
+      workspacePath: "/workspace",
+      userMessage: "echo hello",
+    });
+
+    expect(permissionGate.requests).toEqual([
+      expect.objectContaining({
+        toolCallId: "tool-call-1",
+        toolName: "echo_tool",
+        cwd: "/workspace",
+      }),
+    ]);
+    expect(result.events.map((event) => event.type)).toContain(
+      "permission_checked"
+    );
   });
 
   it("downgrades oversized tool context through the runtime guard", async () => {
@@ -525,7 +581,8 @@ function createLoop(
 function createLoopWithProvider(
   provider: ModelProvider,
   toolContextMaxTokens = 600,
-  traceRecorder?: TraceRecorder
+  traceRecorder?: TraceRecorder,
+  permissionGate?: PermissionGate
 ): AgentLoop {
   return new AgentLoop({
     provider,
@@ -535,6 +592,7 @@ function createLoopWithProvider(
     contextBuilder: new BasicContextBuilder(),
     sessionStore: new InMemorySessionStore(),
     ...(traceRecorder ? { traceRecorder } : {}),
+    ...(permissionGate ? { permissionGate } : {}),
   });
 }
 
@@ -602,6 +660,22 @@ class ScriptedTestProvider implements ModelProvider {
         return;
       }
     }
+  }
+}
+
+class RecordingPermissionGate implements PermissionGate {
+  readonly requests: PermissionCheckRequest[] = [];
+
+  check(request: PermissionCheckRequest): Promise<PermissionDecision> {
+    this.requests.push(request);
+
+    return Promise.resolve({
+      decision: "allow",
+      source: "default_noop",
+      reason: "test allow",
+      toolName: request.toolName,
+      createdAt: "2026-05-17T00:00:00.000Z",
+    });
   }
 }
 

@@ -55,11 +55,15 @@ export function finishContextTraceSpan(
       tokenEstimate: context.tokenEstimate,
       messageCount: context.messages.length,
       systemSectionCount: context.system.length,
+      sectionKinds: context.sections.map((section) => section.kind),
+      skippedSectionCount: context.skippedSections.length,
     },
     attributes: {
       "floris.context.token_estimate": context.tokenEstimate,
       "floris.context.message_count": context.messages.length,
       "floris.context.system_section_count": context.system.length,
+      "floris.context.section_count": context.sections.length,
+      "floris.context.skipped_section_count": context.skippedSections.length,
     },
   });
 }

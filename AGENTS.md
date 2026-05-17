@@ -2,7 +2,9 @@
 
 ## 项目目标
 
-Floris AI 是一个 macOS desktop app，核心交互是 chat。第一阶段聚焦 code agent：用户通过 chat 发起任务，agent 可以理解项目、读写代码、运行命令、解释修改，并在用户参与下逐步完成软件开发。
+Floris AI 是一个通用 AI Agent 产品，第一阶段产品形态是 macOS desktop app，核心交互是 chat。当前以 coding agent 作为实现蓝本：用户通过 chat 发起任务，agent 可以理解项目、读写代码、运行命令、解释修改，并在用户参与下逐步完成软件开发。
+
+重要边界：coding agent 是当前阶段的验证场景，不是 runtime 的唯一产品形态。设计 runtime、memory、session、permission、tool、extension、agent profile 时，默认使用通用 AI Agent 抽象；只有 file edit、shell、git、workspace 这类明确属于 coding workflow 的能力，才放进 coding-specific 模块或 profile。不要把 branch、git、repository、code review、patch 等 coding 概念硬编码进通用 runtime contract。
 
 产品参考方向：
 
@@ -44,7 +46,7 @@ Floris AI 是一个 macOS desktop app，核心交互是 chat。第一阶段聚�
 
 ## 第一阶段范围
 
-第一阶段只做 macOS desktop app，不做 Web、iOS、Android、server hosted 产品。
+第一阶段只做 macOS desktop app，不做 Web、iOS、Android、server hosted 产品。第一阶段用 coding agent 验证核心 agent loop 和 desktop workflow，但通用 runtime contract 不能依赖 coding-only 概念。
 
 第一阶段 code agent 的最小能力：
 
