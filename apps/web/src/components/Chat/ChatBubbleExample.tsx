@@ -1,8 +1,8 @@
-import { Button, Card } from "@heroui/react";
+import { Card } from "@heroui/react";
 
 export default function ChatBubbleExample() {
   return (
-    <Card className=" items-stretch md:flex-row border border-solid border-[#e9e9e9] shadow-none">
+    <Card className=" items-stretch md:flex-row border-none shadow-none p-0!">
       <div className="relative h-35 w-full shrink-0 overflow-hidden rounded-2xl sm:h-30 sm:w-30">
         <img
           alt="Cherries"
@@ -19,15 +19,6 @@ export default function ChatBubbleExample() {
             dolor sed amet faucibus etiam.
           </Card.Description>
         </Card.Header>
-        <Card.Footer className="mt-auto flex w-full flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex flex-col">
-            <span className="text-sm font-medium text-foreground">
-              Only 10 spots
-            </span>
-            <span className="text-xs text-muted">Submission ends Oct 10.</span>
-          </div>
-          <Button className="w-full sm:w-auto">Apply Now</Button>
-        </Card.Footer>
       </div>
     </Card>
   );

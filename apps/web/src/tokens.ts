@@ -6,5 +6,6 @@ export const tokens = {
     gray300: "#C5CFDD",
     white: "#fff",
     black: "#333",
+    default: "oklch(0.98 0.001 286.375)",
   },
 };

@@ -17,3 +17,11 @@
   width: 0;
   height: 0;
 }
+
+.list-box-section {
+  align-items: flex-end;
+}
+
+.card {
+  padding: calc(var(--spacing) * 2);
+}

@@ -25,7 +25,7 @@ function RecordItem({ text, size }: { text: string; size: "sm" | "md" }) {
 
 export default function ChatRecordLift() {
   return (
-    <div className="w-full h-full bg-white flex-col flex justify-center items-start pl-15 gap-0 shrink-0">
+    <div className="w-full h-full bg-white flex-col flex justify-center items-start gap-0 shrink-0">
       {[
         "Lorem ipsum dolor sit amet consectetur.",
         "Find a soothing piece of music.",

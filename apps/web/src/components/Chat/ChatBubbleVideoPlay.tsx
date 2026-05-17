@@ -29,7 +29,7 @@ export default function ChatBubbleVideoPlay() {
   return (
     <Card
       id="chat-bubble-video-play"
-      className="relative aspect-video w-full items-stretch overflow-hidden border border-solid border-[#e9e9e9] p-0 shadow-none"
+      className="relative aspect-video w-full items-stretch overflow-hidden border-none p-0! shadow-none"
     >
       {createElement(
         "media-theme-sutro",

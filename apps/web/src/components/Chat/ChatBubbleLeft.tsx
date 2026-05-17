@@ -1,5 +1,5 @@
 import { tokens } from "@/tokens";
-import { Avatar, Button, Card } from "@heroui/react";
+import { Avatar, Button } from "@heroui/react";
 import { Copy, Paperclip } from "lucide-react";
 
 export default function ChatBubbleLeft({

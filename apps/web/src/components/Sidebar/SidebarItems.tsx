@@ -4,15 +4,21 @@ import {
   Podcast,
   PocketKnife,
   Telescope,
+  FolderClosed,
+  ChevronUp,
+  ChevronDown,
+  Plus,
 } from "lucide-react";
 import { tokens } from "@/tokens";
+import ChatHistoryItem from "../Chat/ChatHistoryItem";
 function SidebarItem({
   id,
   textValue,
   label,
   icon,
-  badge,
   active = false,
+  showPlusIcon = false,
+  isFolded = false,
 }: {
   id: string;
   textValue: string;
@@ -20,6 +26,8 @@ function SidebarItem({
   icon: React.ReactNode;
   badge?: string;
   active?: boolean;
+  showPlusIcon?: boolean;
+  isFolded?: boolean;
 }) {
   return (
     <ListBox.Item
@@ -34,17 +42,14 @@ function SidebarItem({
         >
           {label}
         </Label>
-        {badge && (
+        {showPlusIcon && (
           <>
             <div className="flex-1 h-1"></div>
-            <Label
-              className={cn(
-                "rounded-full w-5 h-5 text-[12px]! flex justify-center items-center",
-                { "text-white": active, "font-semibold": active },
-              )}
-            >
-              {badge}
-            </Label>
+            <Plus
+              size={16}
+              color={tokens.color.black200}
+              className="shrink-0"
+            />
           </>
         )}
       </div>
@@ -65,14 +70,37 @@ export default function SidebarItems() {
           icon={
             <MessageCircleMore
               size={16}
-              color={tokens.color.white}
+              color={tokens.color.black200}
               className="shrink-0"
             />
           }
+          showPlusIcon
+          isFolded={false}
           label="Chat"
-          active
-          badge="12"
+          badge="3"
         />
+        <ListBox.Section>
+          <ChatHistoryItem
+            id="1-1"
+            textValue="You known AI Agent?"
+            color="bg-amber-400"
+            createdAt="3天"
+            isSelected
+          />
+          <ChatHistoryItem
+            id="1-2"
+            textValue="Are you an AI agent?"
+            color="bg-blue-400"
+            createdAt="1周"
+          />
+          <ChatHistoryItem
+            id="1-3"
+            textValue="Give me a soft music?"
+            color="bg-green-400"
+            createdAt="1天"
+          />
+        </ListBox.Section>
+
         <SidebarItem
           id="2"
           textValue="Subsciption"

@@ -21,7 +21,9 @@ export default function ChatBubbleRight({
         <Card className="max-w-full items-stretch md:flex-row border border-solid border-[#e9e9e9] shadow-none">
           <div className="flex flex-1 flex-col gap-3">
             <Card.Header className="gap-1">
-              <Card.Description>{text}</Card.Description>
+              <Card.Description className="text-gray-800">
+                {text}
+              </Card.Description>
             </Card.Header>
           </div>
         </Card>

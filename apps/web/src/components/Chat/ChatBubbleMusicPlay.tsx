@@ -4,7 +4,7 @@ import { ChevronFirst, ChevronLast, Play } from "lucide-react";
 
 export default function ChatBubbleMusicPlay() {
   return (
-    <Card className="relative py-5 h-64 w-60 items-stretch overflow-hidden md:h-90 md:w-80">
+    <Card className="relative py-5 h-64 w-60 items-stretch overflow-hidden md:h-70 md:w-80">
       <img
         id="music-player-cover"
         alt="NEO Home Robot"

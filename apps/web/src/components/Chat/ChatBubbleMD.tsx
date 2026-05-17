@@ -22,7 +22,7 @@ export default function ChatBubbleMD({
 
   return (
     <Card
-      className={`items-stretch border border-solid border-[#e9e9e9] shadow-none ${className ?? ""}`.trim()}
+      className={`items-stretch border-none p-0! shadow-none ${className ?? ""}`.trim()}
     >
       <Card.Content className="">
         <div
