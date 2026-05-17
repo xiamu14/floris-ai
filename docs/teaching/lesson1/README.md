@@ -30,7 +30,8 @@ lesson1-agent-loop-basic-debug
 | Lesson 1.1 Runtime skeleton | `lesson1-agent-loop-basic-debug` | package、目录、类型管理、测试工具链已经足够支撑后续实现。 |
 | Lesson 1.2 ModelProvider boundary | `lesson1-agent-loop-basic-debug` | provider contract、OpenAI-compatible provider、MIMO config、role resolver 已形成最小边界。 |
 | Lesson 1.3 ToolRegistry | `lesson1-agent-loop-basic-debug` | `echo_tool` 和 registry 已经足够解释 tool call 到 tool result 的回填路径。 |
-| Lesson 1.4+ | 后续 tag | context window、session persistence、permission、memory、HookRunner 继续补。 |
+| Lesson 1.4 | `lesson-1.4-context-memory-session-permission` | context boundary、内存版 session event log、permission stub、memory stub 已实现；durable session persistence 放到 Lesson 3。 |
+| Lesson 1.5 AgentLoop state machine | `lesson-1.5-agent-loop-state-machine` | stop reason、permission event、RunGraph diagnostics 和 MLflow demo 验证已实现。 |
 
 完成整课后，开发者应该能独立解释并实现一个最小 code agent loop，理解为什么 agent loop 不是普通 chat completion，而是一个带 tools、hooks、context、event log 的状态机。
 
@@ -52,7 +53,7 @@ Lesson 1 不做这些深水区：
 当前 tag 的非目标还包括：
 
 - 不算完成 context window 或 Context Inspector。
-- 不算完成 session persistence 或 branch tree。
+- 不算完成 durable session persistence 或 branch tree；Lesson 1 只保留 `SessionStore` 接口和内存 event log。
 - 不算完成 HookRunner。
 - 不算完成 PermissionGate。
 - 不算完成 MemoryStore。

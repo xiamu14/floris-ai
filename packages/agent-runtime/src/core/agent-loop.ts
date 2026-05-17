@@ -5,6 +5,7 @@ import {
 } from "../context/context-keys";
 import { createFrameworkContext } from "../context/framework-context";
 import { createToolExecutionContext } from "../context/scenarios/tool-execution-context";
+import { NoopPermissionGate } from "../permissions/permission-gate";
 import { defaultToolResultPolicy } from "../tools/tool-result-policy";
 import type { ContextToolResult } from "../types/context.type";
 import type { FrameworkContext } from "../types/framework-context.type";
@@ -146,6 +147,10 @@ async function runAgentTurn(
     );
 
     if (!toolsOk) {
+      await appendEvent(deps, events, input, "stop", {
+        stopReason: "tool_error",
+      });
+
       return toResult(
         deps,
         input,
@@ -398,6 +403,11 @@ async function forceSynthesisAfterMaxIterations(
   const finalMessage = previousFinalMessage + providerResult.text;
 
   if (providerResult.stopReason === "provider_error") {
+    await appendEvent(deps, events, input, "stop", {
+      stopReason: "provider_error",
+      phase: "forced_synthesis",
+    });
+
     return toResult(
       deps,
       input,
@@ -605,7 +615,8 @@ async function executeToolCall(
   });
 
   const toolContext = createToolExecutionContext(frameworkContext);
-  const permissionDecision = await deps.permissionGate?.check({
+  const permissionGate = deps.permissionGate ?? new NoopPermissionGate();
+  const permissionDecision = await permissionGate.check({
     toolCallId: toolCall.id,
     agentId: input.profile.id,
     threadId: input.threadId,
@@ -616,14 +627,12 @@ async function executeToolCall(
     riskTags: inferPermissionRiskTags(toolCall.name),
   });
 
-  if (permissionDecision) {
-    await appendEvent(deps, events, input, "permission_checked", {
-      toolCallId: toolCall.id,
-      decision: permissionDecision,
-    });
-  }
+  await appendEvent(deps, events, input, "permission_checked", {
+    toolCallId: toolCall.id,
+    decision: permissionDecision,
+  });
 
-  if (permissionDecision && permissionDecision.decision !== "allow") {
+  if (permissionDecision.decision !== "allow") {
     const deniedResult = createPermissionDeniedToolResult(permissionDecision);
 
     finishToolTraceSpan(toolSpan, deniedResult);

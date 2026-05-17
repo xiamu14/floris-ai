@@ -126,7 +126,7 @@ describe("workspace tools", () => {
       ok: true,
       summary: "HTTP 200 OK.",
       metrics: { filterId: "http-request-domain-filter" },
-      context: { content: expect.stringContaining('"ok": true') },
+      context: { content: expect.stringContaining('"ok":true') },
     });
   });
 });

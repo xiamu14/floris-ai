@@ -20,7 +20,7 @@ lesson1-agent-loop-basic-debug
 | Lesson 1.2 ModelProvider boundary | `lesson1-agent-loop-basic-debug` | learning complete |
 | Lesson 1.3 ToolRegistry and first tool | `lesson1-agent-loop-basic-debug` | learning complete |
 | Lesson 1.4 Context / memory / session / permission | 后续 tag | not implemented as capability |
-| Lesson 1.5 AgentLoop state machine | 后续 tag | partial, only basic call path used by demo |
+| Lesson 1.5 AgentLoop state machine | `lesson-1.5-agent-loop-state-machine` | implemented with RunGraph diagnostics |
 | Lesson 1.6 Stream Rendering Web UI | 后续 tag | not implemented |
 | Lesson 1.7 HookRunner MVP | 后续 tag | not implemented |
 
@@ -641,18 +641,22 @@ benchmark 关系：
 
 ### Lesson 1.5 AgentLoop MVP state machine and stop reasons
 
-状态：partial, basic call path exists in `lesson1-agent-loop-basic-debug`
+状态：implemented in `lesson-1.5-agent-loop-state-machine`
 
 目标：
 
 - 实现 `AgentLoop.runTurn()`。
 - 集成 provider、tool registry、hook runner、context builder、session store、permission gate。
 - 实现 `assistant_done`、`tool_use`、`max_iterations`、`provider_error`、`user_interrupted`、`tool_error`、`stop_blocked`。
+- 定义轻量 loop lifecycle，不引入 XState 这类完整状态机库。
+- 从 `AgentEvent[]` 派生 `RunGraph` JSON，供 Lesson 1.6 运行时 state graph 可视化使用。
+- 记录 Pi / OpenCode / Statewright 的对比结论：session event 是主线，permission / hooks / workflow guardrail 分层处理。
 
 类型归属：
 
 - `src/types/runtime.type.ts`：`LoopState`、`RunTurnInput`、`RunTurnResult`、`LoopStopReason`。
 - `src/types/session.type.ts`：agent loop 写入的 `AgentEvent` 基础结构。
+- `src/types/run-graph.type.ts`：`RunGraph`、graph node / edge、diagnostics。
 
 执行路径：
 
@@ -682,6 +686,14 @@ Agent loop event log 应该包含：
 - final answer。
 - stop reason。
 
+RunGraph 设计要求：
+
+- 从 session event 派生，不作为唯一事实来源。
+- 表达 user message、context build、model request、provider event、permission、tool call、tool result、final synthesis、stop。
+- 输出 nodes / edges / metrics / diagnostics。
+- diagnostics 至少覆盖 `invalid_transition`、`missing_stop`、`tool_without_permission`、`provider_max_tokens_without_explicit_stop`。
+- 可带 `traceSpanId`，方便从 graph 节点跳到 MLflow span。
+
 测试：
 
 - 无 tool call，直接结束。
@@ -690,6 +702,8 @@ Agent loop event log 应该包含：
 - provider error。
 - abort。
 - `Stop` hook 阻止停止。
+- `buildRunGraph()` 能从 text-only、tool-call、max-iterations final synthesis、provider max_tokens、tool error events 派生 graph。
+- `validateRunGraph()` 能发现缺失 stop、tool 无 permission、provider max_tokens 处理异常。
 
 ### Lesson 1.6 Stream Rendering Web UI
 
@@ -698,6 +712,7 @@ Agent loop event log 应该包含：
 目标：
 
 - 提供 stream rendering Web UI，用流式方式渲染 agent run。
+- 提供运行时 state graph 可视化，用 React Flow 展示 `RunGraph`。
 - 使用 SSE 作为第一版 transport，但产品目标是增量渲染 chat / timeline，而不是只展示原始 event log。
 - 同步 `docs/teaching/lesson1/1.6-stream-rendering-web-ui.md` 小节文档。
 - 把前面 5 个小节跑成一条完整用户可见路径。
@@ -710,6 +725,7 @@ Web UI 验收输出应该包含可增量渲染的内容：
 - tool result summary。
 - context build summary。
 - stop reason 和 error state。
+- Run Graph：state graph、transition、tool path、diagnostics。
 - MLflow trace id 或 trace link。
 
 第一版 stream rendering 边界：
@@ -718,6 +734,8 @@ Web UI 验收输出应该包含可增量渲染的内容：
 - 使用一个轻量 HTTP server 提供页面和 `/runs` stream endpoint。
 - transport 第一版使用 SSE；事件格式要保持和未来 macOS app bridge 可复用。
 - 页面包含输入框、Run 按钮、assistant message 流式渲染、tool timeline、final answer、stop reason、trace link。
+- 页面包含 `Chat | Events | Run Graph | Trace` debug tabs。
+- `Run Graph` tab 使用 React Flow 渲染 `RunGraph` JSON，但 React Flow 格式不进入 runtime contract。
 - runtime 仍然复用 `packages/agent-runtime`，Web UI 不实现 agent loop。
 - stream event 使用 agent event / trace summary，不传 secret 原文。
 - CLI demo 可以保留为 smoke script，但不再作为 Lesson 1.6 的主要交付。
@@ -731,6 +749,7 @@ message.completed
 tool.started
 tool.completed
 context.built
+run.graph.updated
 run.completed
 run.failed
 ```
@@ -742,6 +761,7 @@ run.failed
 - tool call 要先出现 pending 状态，再更新为 success / error。
 - final answer 由 message deltas 组成，不再只依赖最后的 JSON summary。
 - MLflow trace 仍作为深度观察入口，Web UI 只展示用户需要的运行过程。
+- Run Graph 是控制流观察入口，用来对比真实 run 和 Lesson 1.5 定义的合法路径。
 
 为什么从 CLI 改为 stream Web UI：
 
@@ -749,12 +769,15 @@ run.failed
 - stream rendering 更接近真实用户体验：用户能看到 agent 正在思考、调用 tool、拿到结果和继续生成。
 - SSE 更贴近后续 macOS app bridge 的 event protocol，但不是唯一目标；核心是稳定的 stream event contract。
 - Web UI 能更早暴露 partial message、tool pending state、stop reason、trace link 和用户体验问题。
+- Run Graph 能更早暴露 invalid transition、permission 缺失、重复 tool call、context budget 过高等工程问题。
 
 测试：
 
 - Web UI server 可以启动。
 - stream endpoint 可以输出 `run.started`、`message.delta`、`tool.started`、`tool.completed`、`run.completed`。
 - 前端 reducer 可以把 stream events 合成为 assistant message 和 tool timeline。
+- 前端可以把 `run.graph.updated` 渲染成 React Flow state graph。
+- Run Graph view 可以展示 diagnostics，并支持点击节点查看 event payload summary / trace span id。
 - scripted provider 下能跑到 `assistant_done`。
 - `bun run typecheck` 通过。
 - `bun run test` 通过。
