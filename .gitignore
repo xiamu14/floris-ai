@@ -2,6 +2,55 @@ node_modules
 dist
 coverage
 .DS_Store
+
+# Local app dependencies
+apps/server/node_modules/
+apps/web/node_modules/
+
+# Build output
+apps/server/dist/
+apps/server/build/
+apps/server/.output/
+apps/web/dist/
+apps/web/build/
+apps/web/.output/
+
+# Tool caches
+apps/server/.cache/
+apps/server/.vite/
+apps/server/.turbo/
+apps/server/.wrangler/
+apps/server/*.tsbuildinfo
+apps/web/.cache/
+apps/web/.vite/
+apps/web/.turbo/
+apps/web/.tanstack/
+apps/web/.vinxi/
+apps/web/.nitro/
+apps/web/.wrangler/
+apps/web/.vercel/
+apps/web/.netlify/
+apps/web/*.tsbuildinfo
+
+# Local env and runtime data
+apps/server/.env
+apps/server/.env.*
+!apps/server/.env.example
+apps/server/data/
+apps/server/.data/
+apps/server/tmp/
+apps/server/logs/
+apps/server/*.log
+apps/server/*.sqlite
+apps/server/*.sqlite3
+apps/server/*.db
+apps/web/.env
+apps/web/.env.*
+!apps/web/.env.example
+apps/web/tmp/
+apps/web/logs/
+apps/web/*.log
+
 packages/agent-runtime/src/demo/case/
 .codex/
 graphify-out/
