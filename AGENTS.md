@@ -115,7 +115,7 @@ fate-ai/
 - `packages/agent-runtime`：TypeScript agent runtime。负责 agent loop、provider、tool registry、hooks、prompt management、context、memory、session、permission gate。
 - `docs/architecture`：长期架构、实现范式和跨 lesson 约束。
 - `docs/plans`：具体 lesson 或功能的实现计划和状态。
-- `docs/teaching`：教学规划、教学笔记和实现拆解。
+- `docs/teaching`：教学规划和按小节维护的教学 / 实现文档。
 
 边界规则：
 
@@ -500,9 +500,13 @@ API key 第一阶段先使用平台无关的本地加密配置保存，不绑定
 - 总路线：[docs/plans/lesson-roadmap.md](docs/plans/lesson-roadmap.md)
 - Lesson 1 实现计划：[docs/plans/lesson1-mvp-agent-loop.md](docs/plans/lesson1-mvp-agent-loop.md)
 - Lesson 1 教学规划：[docs/teaching/lesson1/README.md](docs/teaching/lesson1/README.md)
-- Lesson 1 教学笔记：[docs/teaching/lesson1/notes.md](docs/teaching/lesson1/notes.md)
-- Lesson 1 实现拆解：[docs/teaching/lesson1/implementation-breakdown.md](docs/teaching/lesson1/implementation-breakdown.md)
-- Lesson 1 tool 架构：[docs/teaching/lesson1/tool-architecture.md](docs/teaching/lesson1/tool-architecture.md)
+- Lesson 1.1 runtime skeleton：[docs/teaching/lesson1/1.1-runtime-skeleton.md](docs/teaching/lesson1/1.1-runtime-skeleton.md)
+- Lesson 1.2 provider boundary：[docs/teaching/lesson1/1.2-model-provider-boundary.md](docs/teaching/lesson1/1.2-model-provider-boundary.md)
+- Lesson 1.3 tool 架构：[docs/teaching/lesson1/1.3-tool-architecture.md](docs/teaching/lesson1/1.3-tool-architecture.md)
+- Lesson 1.4 context / memory / session / permission：[docs/teaching/lesson1/1.4-context-memory-session-permission.md](docs/teaching/lesson1/1.4-context-memory-session-permission.md)
+- Lesson 1.5 agent loop state machine：[docs/teaching/lesson1/1.5-agent-loop-state-machine.md](docs/teaching/lesson1/1.5-agent-loop-state-machine.md)
+- Lesson 1.6 stream rendering Web UI：[docs/teaching/lesson1/1.6-stream-rendering-web-ui.md](docs/teaching/lesson1/1.6-stream-rendering-web-ui.md)
+- Lesson 1.7 HookRunner MVP：[docs/teaching/lesson1/1.7-hookrunner-mvp.md](docs/teaching/lesson1/1.7-hookrunner-mvp.md)
 
 新增、调整或完成课程小节时，先更新对应 lesson 文档，再按需在这里补充入口链接，不在 AGENTS.md 里复制章节细节。
 
@@ -612,14 +616,13 @@ Code agent 默认运行在用户本机项目目录内，但权限模型必须保
 - `docs/architecture/session-format.md`
 - `docs/architecture/tooling.md`
 - `docs/plans/`：每个 lesson 或功能的具体实现计划、状态和验收清单。
-- `docs/teaching/`：每轮教学笔记和实现拆解。
+- `docs/teaching/`：按 lesson 和小节维护教学 / 实现文档。
 
 每个 lesson 默认包含：
 
 - `docs/teaching/lessonN/README.md`：教学规划，比 `AGENTS.md` 更详细，包含参考资料、方案对比、学习目标和验收标准。
 - `docs/plans/lessonN-*.md`：具体实现计划，包含步骤、文件清单、测试命令、状态和完成标准。
-- `docs/teaching/lessonN/notes.md`：实现过程中同步更新的教学笔记，让用户能独立理解和重写。
-- `docs/teaching/lessonN/implementation-breakdown.md`：代码完成后基于真实代码和运行结果写的实现拆解。
+- `docs/teaching/lessonN/N.x-*.md`：按小节维护教学笔记、实现拆解、当前状态和验收标准，让用户能独立理解和重写。
 
 Lesson tag 规则：
 

@@ -30,7 +30,7 @@ lesson1-agent-loop-basic-debug
 | Lesson 1.1 Runtime skeleton | `lesson1-agent-loop-basic-debug` | package、目录、类型管理、测试工具链已经足够支撑后续实现。 |
 | Lesson 1.2 ModelProvider boundary | `lesson1-agent-loop-basic-debug` | provider contract、OpenAI-compatible provider、MIMO config、role resolver 已形成最小边界。 |
 | Lesson 1.3 ToolRegistry | `lesson1-agent-loop-basic-debug` | `echo_tool` 和 registry 已经足够解释 tool call 到 tool result 的回填路径。 |
-| Lesson 1.4+ | 后续 tag | HookRunner、context window、session persistence、permission、memory 继续补。 |
+| Lesson 1.4+ | 后续 tag | context window、session persistence、permission、memory、HookRunner 继续补。 |
 
 完成整课后，开发者应该能独立解释并实现一个最小 code agent loop，理解为什么 agent loop 不是普通 chat completion，而是一个带 tools、hooks、context、event log 的状态机。
 
@@ -227,10 +227,32 @@ Anthropic Messages API 有明确的 `stop_reason`，例如 `tool_use`、`end_tur
 - `Lesson 1.1`：Runtime skeleton, package layout, and baseline tooling。
 - `Lesson 1.2`：ModelProvider, prompt contracts, and provider transport boundary。
 - `Lesson 1.3`：ToolRegistry and first tool。
-- `Lesson 1.4`：HookRunner MVP。
-- `Lesson 1.5`：Context, prompt, memory, session, and permission stubs。
-- `Lesson 1.6`：AgentLoop MVP state machine and stop reasons。
-- `Lesson 1.7`：CLI demo, verification, teaching notes, and implementation breakdown。
+- `Lesson 1.4`：Context, prompt, memory, session, and permission stubs。
+- `Lesson 1.5`：AgentLoop MVP state machine and stop reasons。
+- `Lesson 1.6`：Stream Rendering Web UI。
+- `Lesson 1.7`：HookRunner MVP。
+
+小节教学文档命名：
+
+- `1.1-runtime-skeleton.md`
+- `1.2-model-provider-boundary.md`
+- `1.3-tool-architecture.md`
+- `1.4-context-memory-session-permission.md`
+- `1.5-agent-loop-state-machine.md`
+- `1.6-stream-rendering-web-ui.md`
+- `1.7-hookrunner-mvp.md`
+
+当前已拆出的独立小节文档：
+
+- `1.1-runtime-skeleton.md`
+- `1.2-model-provider-boundary.md`
+- `1.3-tool-architecture.md`
+- `1.4-context-memory-session-permission.md`
+- `1.5-agent-loop-state-machine.md`
+- `1.6-stream-rendering-web-ui.md`
+- `1.7-hookrunner-mvp.md`
+
+`README.md` 作为 Lesson 1 总览保留。具体教学笔记、实现拆解、当前状态和验收标准都写入对应 `1.x-*.md` 小节文档，不再维护跨小节过程文档。
 
 ### Lesson 1.1 Runtime 目录结构和基础工具链
 
@@ -294,7 +316,7 @@ packages/agent-runtime/
 - `src/types/*.type.ts` 是唯一的命名类型定义位置。
 - 基础类型不作为独立小节一次写完。
 - 每个功能小节开始时，先补齐自己需要的 contract 类型。
-- `Lesson 1.2` 补 provider、prompt、agent profile 类型，`Lesson 1.3` 补 tool 类型，`Lesson 1.4` 补 hook 类型，`Lesson 1.5` 补 context / memory / session / permission 类型，`Lesson 1.6` 补 loop 状态和 stop reason 类型。
+- `Lesson 1.2` 补 provider、prompt、agent profile 类型，`Lesson 1.3` 补 tool 类型，`Lesson 1.4` 补 context / memory / session / permission 类型，`Lesson 1.5` 补 loop 状态和 stop reason 类型，`Lesson 1.7` 补 hook 类型。
 - 实现文件只 `import type`，不在业务代码里顺手定义可复用类型。
 
 测试要求：
@@ -541,51 +563,9 @@ benchmark 策略：
 - 多轮 tool call 的 trace span parent/child 关系可以断言。
 - MLflow / OpenTelemetry exporter 可以用 mock 测试，不要求本地必须启动 MLflow。
 
-### Lesson 1.4 HookRunner MVP
+### Lesson 1.4 Context, prompt, memory, session, and permission stubs
 
-目标：
-
-- 建立内部 typed hooks。
-- 让 context、tool、stop、interrupt 都有扩展点。
-- 未来开放 extension 时有稳定依据。
-
-Lesson 1 hook events：
-
-- `SessionStart`
-- `BeforeContextBuild`
-- `AfterContextBuild`
-- `PreToolUse`
-- `PostToolUse`
-- `Stop`
-- `UserInterrupt`
-
-Hook 设计原则：
-
-- Hook 输入输出必须 typed，本小节类型写入 `hook.type.ts`。
-- Hook 执行顺序必须稳定。
-- Hook 结果必须写入 event log。
-- `PreToolUse` 可以阻止 tool 执行。
-- `Stop` 可以要求继续一轮。
-- `UserInterrupt` 只做清理和记录，不应该阻止中断。
-
-暂时不做：
-
-- 用户脚本。
-- shell hook。
-- HTTP hook。
-- prompt-based hook。
-- agent hook。
-
-这些可以后续开放，但必须基于本 lesson 的 hook 语义文档。
-
-测试要求：
-
-- hook 调用顺序可断言。
-- `PreToolUse` 阻止 tool 后，tool 不执行。
-- `Stop` 返回 continue 后，loop 再跑一轮或返回 `stop_blocked` stub。
-- `UserInterrupt` hook 被调用，但不会阻止 abort。
-
-### Lesson 1.5 Context, prompt, memory, session, and permission stubs
+独立教学文档：`1.4-context-memory-session-permission.md`
 
 目标：
 
@@ -626,7 +606,7 @@ MVP 可以先用粗略 token estimate：
 - session event 可以 JSON serialize / parse。
 - no-op permission gate 出现在 tool path 中，但不阻止 demo tool。
 
-### Lesson 1.6 AgentLoop MVP
+### Lesson 1.5 AgentLoop MVP state machine and stop reasons
 
 目标：
 
@@ -672,30 +652,75 @@ Lesson 1 停止条件：
 - 默认 tool context budget 使用 `1600`；`read_file` 超预算时保留源码 excerpt，不降级成纯 summary。
 - abort 后停止，reason 是 `user_interrupted`。
 
-### Lesson 1.7 Demo, verification, and documentation sync
+### Lesson 1.6 Stream Rendering Web UI
 
 目标：
 
-- 提供一个 CLI demo，证明 runtime 能跑。
-- 当前 demo 默认写入 MLflow trace，用于观察 agent loop、provider、tool 和 token usage。
-- 写出教学笔记和实现拆解。
-- 总结哪些地方是 MVP 简化版。
+- 提供本地 stream rendering Web UI。
+- 使用 SSE 作为第一版 transport。
+- 增量渲染 user message、assistant delta、tool timeline、stop reason 和 trace link。
+- 把前面 agent runtime 能力跑成一条用户可见路径。
 
-Demo 流程：
+第一版边界：
+
+- 本地开发 UI，不做生产 macOS app。
+- Web UI 不实现 agent loop，只消费 runtime stream events。
+- CLI demo 保留为 smoke script，不再作为主交付。
+- MLflow trace 继续作为深度观察入口。
+
+stream event 最小 contract：
 
 ```text
-user: please echo hello
-provider: requests echo_tool({ text: "hello" })
-tool: returns { text: "hello" }
-provider: final answer "tool returned hello"
-loop: stops with assistant_done
+run.started
+message.delta
+message.completed
+tool.started
+tool.completed
+context.built
+run.completed
+run.failed
 ```
 
 测试要求：
 
-- 一条命令可以跑完整 demo。
-- 单元测试覆盖主路径。
-- event log 能看到 user message、provider event、tool call、tool result、stop reason。
+- Web UI server 可以启动。
+- stream endpoint 可以输出最小 event sequence。
+- 前端 reducer 可以把 stream events 合成为 assistant message 和 tool timeline。
+- scripted provider 下能跑到 `assistant_done`。
+
+### Lesson 1.7 HookRunner MVP
+
+目标：
+
+- 建立内部 typed hooks。
+- 让 context、tool、stop、interrupt 都有 extension points。
+- 未来开放 extension 时有稳定依据。
+
+Lesson 1 hook events：
+
+- `SessionStart`
+- `BeforeContextBuild`
+- `AfterContextBuild`
+- `PreToolUse`
+- `PostToolUse`
+- `Stop`
+- `UserInterrupt`
+
+Hook 设计原则：
+
+- Hook 输入输出必须 typed，本小节类型写入 `hook.type.ts`。
+- Hook 执行顺序必须稳定。
+- Hook 结果必须写入 event log 或 stream event。
+- `PreToolUse` 可以阻止 tool 执行。
+- `Stop` 可以要求继续一轮。
+- `UserInterrupt` 只做清理和记录，不应该阻止中断。
+
+测试要求：
+
+- hook 调用顺序可断言。
+- `PreToolUse` 阻止 tool 后，tool 不执行。
+- `Stop` 返回 continue 后，loop 再跑一轮或返回 `stop_blocked` stub。
+- hook event 能进入 session event / stream event。
 
 ## Lesson 1 输出物
 
@@ -703,14 +728,13 @@ Lesson 1 完成时必须有：
 
 - `packages/agent-runtime` 最小代码。
 - 单元测试。
-- CLI demo。
-- `docs/teaching/lesson1/notes.md` 教学笔记。
-- `docs/teaching/lesson1/implementation-breakdown.md` 基于真实代码和运行结果的实现拆解。
+- Stream Rendering Web UI。
+- `docs/teaching/lesson1/1.x-*.md` 小节文档，包含教学笔记、实现拆解、当前状态和验收标准。
 - `docs/plans/lesson1-mvp-agent-loop.md` 实现计划更新为已完成状态。
 
-## 教学笔记要求
+## 小节文档要求
 
-教学笔记不是简单总结，要让用户能独立实现这一课。每个小节至少包含：
+每个 `1.x-*.md` 小节文档不是简单总结，要让用户能独立理解和重写这一节。每个小节至少包含：
 
 - 本小节目标。
 - 核心类型和函数。
@@ -719,11 +743,6 @@ Lesson 1 完成时必须有：
 - 替代方案和暂时不采用的原因。
 - 测试怎么写。
 - 常见错误。
-
-## 实现拆解要求
-
-实现拆解必须基于真实代码和真实运行结果。它应该回答：
-
 - 实际新增了哪些文件。
 - 每个核心文件负责什么。
 - agent loop 的执行路径是什么。

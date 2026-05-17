@@ -7,7 +7,7 @@
 当前相关设计散落在：
 
 - `docs/architecture/agent-loop-implementation-paradigm.md`
-- `docs/teaching/lesson1/tool-architecture.md`
+- `docs/teaching/lesson1/1.3-tool-architecture.md`
 - `docs/plans/lesson1-mvp-agent-loop.md`
 
 ## 待补内容

@@ -27,8 +27,14 @@ lesson1-agent-loop-basic-debug
 本计划对应教学规划：
 
 - `docs/teaching/lesson1/README.md`
+- `docs/teaching/lesson1/1.1-runtime-skeleton.md`
+- `docs/teaching/lesson1/1.2-model-provider-boundary.md`
+- `docs/teaching/lesson1/1.3-tool-architecture.md`
+- `docs/teaching/lesson1/1.4-context-memory-session-permission.md`
+- `docs/teaching/lesson1/1.5-agent-loop-state-machine.md`
+- `docs/teaching/lesson1/1.6-stream-rendering-web-ui.md`
+- `docs/teaching/lesson1/1.7-hookrunner-mvp.md`
 - `docs/architecture/agent-loop-implementation-paradigm.md`
-- `docs/teaching/lesson1/tool-architecture.md`
 - `docs/plans/lesson-roadmap.md`
 
 ## 实现目标
@@ -466,7 +472,7 @@ Lesson 1 的 `ModelEvent`：
 - 暂不使用 `execa`、`axios`、`shelljs`、`simple-git`。command 执行、安全边界、stdout/stderr 管理和 token 优化都要在 runtime 内部完成。
 - 不提供 `rtk` adapter。Floris 内置等效的输出优化策略，方便调试、验证和观察这些策略对 LLM 行为的影响。
 
-完整设计见 `docs/teaching/lesson1/tool-architecture.md`。
+完整设计见 `docs/teaching/lesson1/1.3-tool-architecture.md`。
 
 #### Lesson 1.3.x Structured Trace and Visual Observation
 
@@ -580,6 +586,10 @@ benchmark 关系：
 
 状态：not implemented as capability
 
+独立教学文档：
+
+- `docs/teaching/lesson1/1.4-context-memory-session-permission.md`
+
 目标：
 
 - 实现 `ContextBuilder`。
@@ -587,6 +597,13 @@ benchmark 关系：
 - 实现内存版 `MemoryStore`。
 - 实现 `InMemorySessionStore`。
 - 实现 no-op `PermissionGate` 或接口占位。
+
+作用：
+
+- 让 provider request 的输入从临时字符串变成结构化 context sections。
+- 让 agent run 从第一版开始写入 session event，方便后续 replay、branch、Web UI 和 benchmark 复用。
+- 让 tool execution 从第一版开始经过 permission boundary，后续真实权限策略可以替换实现，不需要重写 agent loop。
+- 让 memory 和 session 分开：memory 影响后续 context，session 记录已经发生的事实。
 
 任务：
 
@@ -596,12 +613,17 @@ benchmark 关系：
 - 支持 recent messages、memory entries、tool results sections。
 - 支持 append event 和 list events。
 - 为 JSONL persistence 保留 session store 接口。
+- 让 no-op `PermissionGate` 返回结构化 allow decision。
+- 在 tool execution 前调用 `PermissionGate.check()`。
 
 设计要求：
 
 - context 由 section 组成，不直接拼一整个字符串。
 - 每个 section 有 `kind`、`title`、`content`、`tokenEstimate`。
 - token estimate 第一版使用字符数 / 4。
+- `system` section 必须来自解析后的 `AgentProfile.systemPrompt`。
+- `project_instructions` section 读取 workspace 根目录 `AGENTS.md`，缺失时不 crash。
+- `SessionStore` event 必须有 `id`、`type`、`threadId`、`branchId`、`parentId`、`createdAt`。
 - no-op permission gate 必须出现在 tool execution path 中，后续才能替换成真实策略。
 
 测试：
@@ -609,9 +631,13 @@ benchmark 关系：
 - `ContextBuilder` 能输出 section 列表。
 - `ContextBuilder` 能输出来自 `AgentProfile.systemPrompt` 的独立 `system` section。
 - 可以包含 `AGENTS.md`。
+- `AGENTS.md` 缺失时不 crash。
 - 可以加入 recent messages 和 memory entries。
 - event 按顺序写入 session store。
-- no-op permission gate 不阻止默认 demo tool。
+- no-op permission gate 在 tool execution 前被调用，并且不阻止默认 demo tool。
+- `bun run typecheck` 通过。
+- `bun run test` 通过。
+- `bun run check` 通过。
 
 ### Lesson 1.5 AgentLoop MVP state machine and stop reasons
 
@@ -673,7 +699,7 @@ Agent loop event log 应该包含：
 
 - 提供 stream rendering Web UI，用流式方式渲染 agent run。
 - 使用 SSE 作为第一版 transport，但产品目标是增量渲染 chat / timeline，而不是只展示原始 event log。
-- 同步教学笔记和实现拆解。
+- 同步 `docs/teaching/lesson1/1.6-stream-rendering-web-ui.md` 小节文档。
 - 把前面 5 个小节跑成一条完整用户可见路径。
 
 Web UI 验收输出应该包含可增量渲染的内容：
@@ -736,8 +762,7 @@ run.failed
 
 文档同步：
 
-- 更新 `docs/teaching/lesson1/notes.md`。
-- 更新 `docs/teaching/lesson1/implementation-breakdown.md`。
+- 更新 `docs/teaching/lesson1/1.6-stream-rendering-web-ui.md`。
 - 在本计划中把完成的小节状态改成 done。
 
 ### Lesson 1.7 HookRunner MVP
@@ -813,5 +838,5 @@ bun run demo
 - `bun run typecheck` 通过。
 - `bun run test` 通过。
 - `bun run demo` 成功跑通。
-- 教学笔记和实现拆解已更新。
+- 对应 `1.x-*.md` 小节文档已更新。
 - 用户可以按 `docs/teaching/lesson1/README.md` 独立理解设计，按本计划独立实现 MVP。

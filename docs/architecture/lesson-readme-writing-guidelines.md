@@ -38,9 +38,8 @@ Lesson README 面向共同开发和教学，不只面向执行。它必须能让
 8. 参考方案对比
 9. 具体小节拆分
 10. 输出物
-11. 教学笔记要求
-12. 实现拆解要求
-13. 验收标准
+11. 小节文档要求
+12. 验收标准
 
 可以根据 lesson 内容增删小节，但不能省略“技术演进脉络”“方案对比”“本课在整体架构中的位置”“验收标准”。
 
@@ -166,8 +165,7 @@ Lesson README 要记录我们如何做判断，而不是只记录结论。
 - `docs/architecture/*.md`：定义长期架构和实现范式。
 - `docs/teaching/lessonN/README.md`：定义某一课的教学规划、技术脉络和方案选择。
 - `docs/plans/lessonN-*.md`：定义某一课的具体实现步骤和状态。
-- `docs/teaching/lessonN/notes.md`：实现过程中同步写教学笔记。
-- `docs/teaching/lessonN/implementation-breakdown.md`：实现完成后基于真实代码和运行结果写拆解。
+- `docs/teaching/lessonN/N.x-*.md`：按小节同步写教学笔记、实现拆解、当前状态和验收标准。
 
 ## 修改规则
 
